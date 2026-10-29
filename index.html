@@ -1,0 +1,912 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Vorstapelung & Palettierung – 3D-Funktionsablauf</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: "Segoe UI", system-ui, sans-serif; background: #dfe5ea; }
+  #app { position: fixed; inset: 0; }
+  #panel {
+    position: fixed; top: 12px; left: 12px; width: 330px; max-height: calc(100% - 24px); overflow: auto;
+    background: rgba(255,255,255,.93); border-radius: 10px; box-shadow: 0 4px 18px rgba(0,0,0,.18);
+    padding: 12px 14px; font-size: 13px; color: #1f2933; box-sizing: border-box;
+  }
+  #panel h1 { font-size: 16px; margin: 0 0 8px; }
+  .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+  button { border: 1px solid #b8c2cc; background: #f5f7f9; border-radius: 6px; padding: 4px 8px; cursor: pointer; font: inherit; }
+  button:hover { background: #e6ebf0; }
+  button.on { background: #f08a24; color: #fff; border-color: #d97316; }
+  select, input[type=range] { flex: 1; }
+  ol#steps { margin: 8px 0; padding-left: 22px; }
+  ol#steps li { padding: 3px 4px; border-radius: 5px; transition: background .3s; line-height: 1.3; }
+  ol#steps li.active { background: #ffe2c4; }
+  .grid { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; }
+  .grid div:nth-child(even) { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .cmp { display: grid; grid-template-columns: 1fr auto auto; gap: 2px 10px; }
+  .cmp div:not(:nth-child(3n+1)) { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .cmp .hd { color: #52606d; font-weight: 600; border-bottom: 1px solid #dde3e8; }
+  .cmp .a { color: #d9700f; } .cmp .b { color: #5b6b7c; }
+  .cmp .big { font-size: 15px; }
+  .note { background: #eef2f6; border-radius: 6px; padding: 5px 7px; color: #3e4c59; line-height: 1.35; }
+  .title { font: 700 17px "Segoe UI", sans-serif; color: #fff; padding: 5px 12px; border-radius: 7px; white-space: nowrap; pointer-events: none; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+  .title.a { background: rgba(217,112,15,.95); } .title.b { background: rgba(70,84,99,.95); }
+  .title small { display: block; font-weight: 500; font-size: 13px; }
+  h2 { font-size: 13px; margin: 10px 0 4px; color: #52606d; text-transform: uppercase; letter-spacing: .04em; }
+  .status div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid #eef1f4; padding: 1px 0; }
+  .status span:first-child { color: #52606d; white-space: nowrap; }
+  .status span:last-child { text-align: right; }
+  #log { font-family: Consolas, monospace; font-size: 11.5px; color: #3e4c59; white-space: pre-wrap; }
+  .legend { display: flex; gap: 8px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -2px; margin-right: 3px; }
+  .lbl { font: 600 12px "Segoe UI", sans-serif; color: #fff; background: rgba(224,112,20,.92); padding: 2px 7px; border-radius: 4px; white-space: nowrap; pointer-events: none; }
+  .lbl.num { background: rgba(31,41,51,.85); font-size: 15px; padding: 1px 8px; }
+  .lbl.small { background: rgba(31,41,51,.7); font-weight: 500; font-size: 11px; }
+  #hint { position: fixed; right: 12px; bottom: 10px; font-size: 12px; color: #52606d; background: rgba(255,255,255,.8); padding: 4px 8px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="panel">
+  <h1>Vorstapelung &amp; Palettierung</h1>
+  <div style="color:#52606d;margin:-4px 0 6px">Links: <b style="color:#d9700f">MIT Vorstapelung</b> · rechts: <b style="color:#5b6b7c">OHNE Vorstapelung</b> – identische Zufuhr und Taktzeiten</div>
+  <div class="row">
+    <button id="play">⏸ Pause</button>
+    <button id="reset">↺ Neustart</button>
+    <button id="labels" class="on">Beschriftung</button>
+  </div>
+  <div class="row"><span>Tempo</span><input type="range" id="speed" min="0.25" max="8" step="0.25" value="1.5" /><span id="speedv">1.5×</span></div>
+  <div class="row"><span>Turmhöhe</span>
+    <select id="pairs">
+      <option value="2">2 Paare = 4 Behälter</option>
+      <option value="3" selected>3 Paare = 6 Behälter</option>
+    </select>
+  </div>
+  <div class="row"><span>Kamera für</span>
+    <select id="camm">
+      <option value="0" selected>Maschine MIT Vorstapelung</option>
+      <option value="1">Maschine OHNE Vorstapelung</option>
+    </select>
+  </div>
+  <div class="row" id="cams">
+    <button data-cam="compare" class="on">Vergleich</button>
+    <button data-cam="overview">Übersicht</button>
+    <button data-cam="detray">Detraying</button>
+    <button data-cam="prestack">Pre-Stacker</button>
+    <button data-cam="stacker">Stacker</button>
+    <button data-cam="pallet">Palettierer</button>
+    <button data-cam="top">Draufsicht</button>
+  </div>
+  <div class="legend">
+    <span><i style="background:#2f6fd6"></i>Spur 1</span><span><i style="background:#2f9e5a"></i>Spur 2</span>
+    <span><i style="background:#e08a1e"></i>Spur 3</span><span><i style="background:#c8463c"></i>Spur 4</span>
+  </div>
+  <h2>Funktionsablauf</h2>
+  <ol id="steps">
+    <li data-step="1">Infeed: Behälter auf Tray fahren auf 4 Spuren zu</li>
+    <li data-step="2">Detraying: Behälter wird gegriffen und angehoben, Tray fährt weiter zum Outfeed</li>
+    <li data-step="3">Outfeed: Tray wird seitlich abgeschoben (1 ←, 2 →, 3 ←, 4 →)</li>
+    <li data-step="4">Nur noch der Behälter fährt auf der Spur zum Pre-Stacker 1–4</li>
+    <li data-step="5">Pre-Stacker 1–4: Behälter wird angehoben, nächster Behälter derselben Spur fährt darunter → Paar</li>
+    <li data-step="6">Querübergabe: Paar 1 (4) wird auf Spur 2 (3) geschoben, abwechselnd in den Stacker</li>
+    <li data-step="7">Stacker: Paar fährt auf Hubplattform, Plattform senkt ab, nächstes Paar wird oben aufgesetzt</li>
+    <li data-step="8">Fertiger Turm wird auf Palettierebene abgesenkt und in den Palettierer gefahren (2 je Seite)</li>
+    <li data-step="9">Alle 4 Türme bereit: Zusammenschieben und auf Leerpalette schieben, Abtransport</li>
+  </ol>
+  <div class="note"><b>Ohne Vorstapelung:</b> keine Pre-Stacker – Behälter 1 (4) wird einzeln quer auf Spur 2 (3) übergeben. Der Stacker senkt pro Behälter ab – doppelt so viele Hübe pro Turm.</div>
+  <h2>Vergleich</h2>
+  <div class="cmp" id="stats"></div>
+  <h2>Stationen – mit Vorstapelung</h2>
+  <div class="status" id="status"></div>
+  <h2>Stationen – ohne Vorstapelung</h2>
+  <div class="status" id="statusB"></div>
+  <h2>Ereignisse</h2>
+  <div id="log"></div>
+</div>
+<div id="hint">Maus: drehen · Rechtsklick: verschieben · Rad: zoomen</div>
+
+<script src="./crate-glb.js"></script>
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.170.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+// ======================= Layout (Meter, Y oben, Fluss Richtung -Z) =======================
+const CONV_Y = 1.75;            // Oberkante Fördertechnik (hochgelegt – Stacker senkt nach unten ab)
+const DY = CONV_Y - 0.78;       // Höhenversatz gegenüber Standard-Förderhöhe
+const Y_PAL = 0.42;             // Palettierebene (Oberkante Palette / Palettiertisch)
+const TRAY_H = 0.06, TRAY_W = 0.46, TRAY_L = 0.66;
+const CRATE_H = 0.25, CRATE_W = 0.4, CRATE_L = 0.6, PITCH = 0.24; // Stapelmaß 240 mm
+const PALLET_H = 0.144;
+const LANE_X = [-1.9, -0.85, 0.85, 1.9];
+const Z_IN = [8.3, 7.55, 6.8, 6.05, 5.3];
+const Z_DET = 4.5, Z_OUT = 3.7, Z_Q = [3.0], Z_PS = 2.3, Z_PRE = 1.45, Z_STK = 0;
+const Z_SLOTS = [-2.7, -2.1], Z_PAL = -2.4;
+const X_PAL = 3.0, Z_PAL_IN = 2.4, Z_PAL_WAIT = -0.85, Z_PAL_OUT = -7.6;
+const SPEED = 0.6;              // Fördergeschwindigkeit m/s
+const LANE_COLORS = ['#2f6fd6', '#2f9e5a', '#e08a1e', '#c8463c'];
+
+// ======================= Ablauf-Engine (Coroutinen auf Simulationszeit) =======================
+const smooth = (p) => { p = Math.min(1, Math.max(0, p)); return p * p * (3 - 2 * p); };
+const linear = (p) => Math.min(1, Math.max(0, p));
+class Sim {
+  constructor() { this.t = 0; this.procs = []; this.anims = []; }
+  spawn(gen) { this.procs.push({ g: gen, until: this.t, cond: null }); }
+  animate(dur, fn) {
+    if (dur <= 0) { fn(1); return 0; }
+    this.anims.push({ t0: this.t, dur, fn }); fn(0); return dur;
+  }
+  move(obj, to, dur, e = smooth) {
+    const f = obj.position.clone();
+    const tg = new THREE.Vector3(to.x ?? f.x, to.y ?? f.y, to.z ?? f.z);
+    return this.animate(dur, (p) => obj.position.lerpVectors(f, tg, e(p)));
+  }
+  step(dt) { let r = dt; while (r > 1e-9) { const h = Math.min(1 / 60, r); r -= h; this.t += h; this.tick(); } }
+  tick() {
+    if (this.anims.length) {
+      const keep = [];
+      for (const a of this.anims) {
+        const p = (this.t - a.t0) / a.dur;
+        if (p >= 1 - 1e-6) a.fn(1); else { a.fn(p); keep.push(a); }
+      }
+      this.anims = keep;
+    }
+    for (let pass = 0; pass < 30; pass++) {
+      let progressed = false;
+      for (const p of this.procs.slice()) {
+        if (p.cond) { if (!p.cond()) continue; p.cond = null; }
+        else if (p.until > this.t + 1e-6) continue;
+        progressed = true;
+        const r = p.g.next();
+        if (r.done) { const i = this.procs.indexOf(p); if (i >= 0) this.procs.splice(i, 1); continue; }
+        if (typeof r.value === 'number') p.until = this.t + r.value;
+        else if (typeof r.value === 'function') p.cond = r.value;
+        else p.until = this.t;
+      }
+      if (!progressed) break;
+    }
+  }
+}
+
+// ======================= Renderer / Szene =======================
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+app.appendChild(renderer.domElement);
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.setSize(innerWidth, innerHeight);
+Object.assign(labelRenderer.domElement.style, { position: 'fixed', inset: '0', pointerEvents: 'none' });
+app.appendChild(labelRenderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#dfe5ea');
+scene.fog = new THREE.Fog('#dfe5ea', 40, 90);
+const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.05, 200);
+camera.position.set(8, 9.5, 12.5);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0.3, 0.8, 0.6);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.495;
+
+scene.add(new THREE.HemisphereLight('#ffffff', '#6f7a84', 1.7));
+const OX_B = 9.5;               // Versatz der Vergleichsmaschine ohne Vorstapelung
+const sun = new THREE.DirectionalLight('#ffffff', 2.6);
+sun.position.set(OX_B / 2 + 7, 14, 9);
+sun.target.position.set(OX_B / 2, 0, 0); scene.add(sun.target);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left: -15, right: 15, top: 14, bottom: -14, near: 1, far: 50 });
+sun.shadow.bias = -0.0004;
+scene.add(sun);
+const fill = new THREE.DirectionalLight('#cfe2ff', 0.8);
+fill.position.set(-8, 6, -6);
+scene.add(fill);
+
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ color: '#b4bcc3', roughness: 0.92 }));
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+const grid = new THREE.GridHelper(40, 40, '#99a3ad', '#a7b0b8'); grid.position.y = 0.002; scene.add(grid);
+
+const worldRoot = new THREE.Group(); scene.add(worldRoot); // feste Anlagen
+let world = worldRoot;                                      // aktuelle Bau-Gruppe (je Maschine)
+const dynamic = new THREE.Group(); scene.add(dynamic);     // Behälter, Trays, Paletten
+const labelGroup = new THREE.Group(); scene.add(labelGroup);
+let labelParent = labelGroup;
+
+// ---------- Materialien & Helfer ----------
+const M = {
+  frame: new THREE.MeshStandardMaterial({ color: '#8a96a3', metalness: 0.55, roughness: 0.45 }),
+  frameDark: new THREE.MeshStandardMaterial({ color: '#4a5562', metalness: 0.5, roughness: 0.5 }),
+  rail: new THREE.MeshStandardMaterial({ color: '#56708c', metalness: 0.4, roughness: 0.5 }),
+  roller: new THREE.MeshStandardMaterial({ color: '#d9dde1', metalness: 0.85, roughness: 0.3 }),
+  belt: new THREE.MeshStandardMaterial({ color: '#2b3036', roughness: 0.85 }),
+  plate: new THREE.MeshStandardMaterial({ color: '#c2c9cf', metalness: 0.7, roughness: 0.35 }),
+  act: new THREE.MeshStandardMaterial({ color: '#f08a24', metalness: 0.3, roughness: 0.45 }),
+  clamp: new THREE.MeshStandardMaterial({ color: '#f2b134', metalness: 0.3, roughness: 0.4 }),
+  rod: new THREE.MeshStandardMaterial({ color: '#e9edf0', metalness: 0.9, roughness: 0.2 }),
+  tray: new THREE.MeshStandardMaterial({ color: '#40464d', roughness: 0.7 }),
+  wood: new THREE.MeshStandardMaterial({ color: '#cfa66a', roughness: 0.85 }),
+  woodDark: new THREE.MeshStandardMaterial({ color: '#a98148', roughness: 0.9 }),
+  chain: new THREE.MeshStandardMaterial({ color: '#30363c', metalness: 0.6, roughness: 0.5 }),
+  zone: new THREE.MeshStandardMaterial({ color: '#e8c33a', roughness: 0.8 }),
+};
+const crateMats = LANE_COLORS.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, side: THREE.DoubleSide }));
+const boxGeoCache = new Map();
+function box(w, h, d, mat, x, y, z, parent = world) {
+  const key = `${w}|${h}|${d}`;
+  if (!boxGeoCache.has(key)) boxGeoCache.set(key, new THREE.BoxGeometry(w, h, d));
+  const m = new THREE.Mesh(boxGeoCache.get(key), mat);
+  m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true;
+  parent.add(m); return m;
+}
+function cyl(r, len, mat, x, y, z, axis, parent = world) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 14), mat);
+  if (axis === 'x') m.rotation.z = Math.PI / 2;
+  if (axis === 'z') m.rotation.x = Math.PI / 2;
+  m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m;
+}
+function label(text, x, y, z, cls = '') {
+  const el = document.createElement('div'); el.className = 'lbl ' + cls; el.textContent = text;
+  const o = new CSS2DObject(el); o.position.set(x, y, z); labelParent.add(o); return o;
+}
+const movers = []; // bewegte Maschinenteile → Ausgangslage für Neustart (Snapshot nach Aufbau)
+const mover = (o) => { movers.push(o); return o; };
+
+// ---------- Fördertechnik ----------
+/** Rollen-/Gurtförderer von (x0,z0) nach (x1,z1); Oberkante auf y. */
+function conveyor(x0, z0, x1, z1, { width = 0.56, y = CONV_Y, type = 'roller', legs = true } = {}) {
+  const g = new THREE.Group();
+  const len = Math.hypot(x1 - x0, z1 - z0);
+  g.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2);
+  if (Math.abs(x1 - x0) > Math.abs(z1 - z0)) g.rotation.y = Math.PI / 2;
+  for (const s of [-1, 1]) box(0.04, 0.13, len, M.rail, s * (width / 2 + 0.02), y - 0.055, 0, g);
+  if (type === 'roller') {
+    const n = Math.max(1, Math.floor(len / 0.1));
+    const geo = new THREE.CylinderGeometry(0.024, 0.024, width - 0.02, 12); geo.rotateZ(Math.PI / 2);
+    const im = new THREE.InstancedMesh(geo, M.roller, n); im.castShadow = true; im.receiveShadow = true;
+    const m4 = new THREE.Matrix4();
+    for (let i = 0; i < n; i++) { m4.makeTranslation(0, y - 0.024, -len / 2 + 0.05 + i * (len - 0.1) / Math.max(1, n - 1)); im.setMatrixAt(i, m4); }
+    g.add(im);
+  } else {
+    box(width, 0.02, len, M.belt, 0, y - 0.01, 0, g);
+    for (const s of [-1, 1]) cyl(0.04, width, M.roller, 0, y - 0.04, s * (len / 2 - 0.04), 'x', g);
+  }
+  if (legs) {
+    const n = Math.max(2, Math.ceil(len / 1.3) + 1);
+    for (let k = 0; k < n; k++) {
+      const z = -len / 2 + 0.06 + k * (len - 0.12) / (n - 1);
+      for (const s of [-1, 1]) box(0.05, y - 0.12, 0.05, M.frameDark, s * (width / 2 - 0.01), (y - 0.12) / 2, z, g);
+      box(width, 0.04, 0.05, M.frameDark, 0, 0.25, z, g);
+    }
+  }
+  world.add(g); return g;
+}
+function portal(x0, x1, z0, z1, h, mat = M.frame) {
+  for (const x of [x0, x1]) for (const z of [z0, z1]) box(0.08, h, 0.08, mat, x, h / 2, z);
+  for (const z of [z0, z1]) box(Math.abs(x1 - x0) + 0.08, 0.1, 0.1, mat, (x0 + x1) / 2, h, z);
+  for (const x of [x0, x1]) box(0.1, 0.1, Math.abs(z1 - z0), mat, x, h, (z0 + z1) / 2);
+}
+
+/** Greifer-/Hubeinheit: zwei Klemmbacken an den Längsseiten.
+ *  style 'bar': Traverse oberhalb (Detraying, Pre-Stacker); 'side': Schlitten an Säulen (Stacker, Turm passiert). */
+function clampUnit(x, z, baseY, { style = 'bar', barY = 0.6, plateL = 0.48, frameH = 2 } = {}) {
+  const g = mover(new THREE.Group()); g.position.set(x, baseY, z);
+  const open = CRATE_W / 2 + 0.075, closed = CRATE_W / 2 + 0.0125;
+  const mk = (s) => {
+    const p = mover(new THREE.Group()); p.position.x = s * open;
+    box(0.025, 0.16, plateL, M.clamp, 0, 0.11, 0, p);
+    if (style === 'bar') {
+      for (const dz of [-1, 1]) cyl(0.012, barY - 0.19, M.rod, 0, 0.19 + (barY - 0.19) / 2, dz * plateL * 0.35, null, p);
+    } else {
+      for (const dz of [-1, 1]) cyl(0.014, 0.32, M.rod, s * 0.16, 0.11, dz * plateL * 0.3, 'x', p);
+    }
+    g.add(p); return p;
+  };
+  const left = mk(-1), right = mk(1);
+  if (style === 'bar') {
+    box(0.66, 0.06, 0.12, M.act, 0, barY + 0.03, -plateL * 0.35, g);
+    box(0.66, 0.06, 0.12, M.act, 0, barY + 0.03, plateL * 0.35, g);
+    box(0.1, 0.06, plateL * 0.7 + 0.12, M.act, 0, barY + 0.03, 0, g);
+    cyl(0.03, frameH - baseY - barY - 0.05, M.rod, 0, barY + (frameH - baseY - barY) / 2, 0, null, g);
+    // fester Hubzylinder an der Traverse des Portals
+    box(0.12, 0.35, 0.12, M.frameDark, x, frameH - 0.2, z);
+    box(0.9, 0.1, 0.12, M.frame, x, frameH, z);
+    for (const s of [-1, 1]) box(0.08, frameH, 0.08, M.frame, x + s * 0.45, frameH / 2, z + 0.42), box(0.08, frameH, 0.08, M.frame, x + s * 0.45, frameH / 2, z - 0.42);
+    for (const s of [-1, 1]) box(0.1, 0.1, 0.92, M.frame, x + s * 0.45, frameH, z);
+  } else {
+    for (const s of [-1, 1]) {
+      box(0.1, 0.24, 0.36, M.act, s * 0.52, 0.11, 0, g);           // Hubschlitten
+      box(0.12, frameH, 0.12, M.frame, x + s * 0.52, frameH / 2, z); // Säule
+      box(0.03, frameH - 0.3, 0.03, M.rod, x + s * 0.6, frameH / 2, z);
+    }
+    box(1.2, 0.14, 0.16, M.frame, x, frameH, z);
+  }
+  world.add(g);
+  return { group: g, left, right, open, closed };
+}
+/** Schieber mit Platte, an Laufwagen auf Querträger hängend (bewegt in X). */
+function pusher(parkX, z, { plateH = 0.12, plateL = 0.5, plateY = CONV_Y + 0.02, beamY = 1.55, rodZ = 0.36 } = {}) {
+  const g = mover(new THREE.Group()); g.position.set(parkX, 0, z); g.userData.park = parkX;
+  box(0.03, plateH, plateL, M.act, 0, plateY + plateH / 2, 0, g);
+  for (const s of [-1, 1]) {
+    box(0.03, 0.03, Math.abs(rodZ - plateL / 2) + 0.03, M.act, 0, plateY + plateH - 0.015, s * (rodZ + plateL / 2) / 2, g);
+    cyl(0.014, beamY - plateY - plateH, M.rod, 0, (beamY + plateY + plateH) / 2, s * rodZ, null, g);
+    box(0.16, 0.08, 0.1, M.frameDark, 0, beamY + 0.02, s * rodZ, g);
+  }
+  world.add(g); return g;
+}
+function beamX(x0, x1, z, y) { box(Math.abs(x1 - x0), 0.07, 0.07, M.frame, (x0 + x1) / 2, y + 0.095, z); }
+
+// ---------- Anlage aufbauen (lokale Koordinaten, Maschine um ox in X versetzt) ----------
+function buildMachine(ox, pre) {
+const root = new THREE.Group(); root.position.x = ox; worldRoot.add(root);
+const lbl = new THREE.Group(); lbl.position.x = ox; labelGroup.add(lbl);
+const dyn = new THREE.Group(); dyn.position.x = ox; dynamic.add(dyn);
+world = root; labelParent = lbl;
+const P = { detray: [], trayPusher: [], preLift: [], prePusher: [], stackLift: [], palPusher: null };
+// Spuren (oben); Spur 2/3 enden am Stacker
+LANE_X.forEach((x, i) => {
+  const end = i === 1 || i === 2 ? Z_STK + 0.46 : Z_PRE - 0.33;
+  conveyor(x, 8.75, x, end);
+});
+// Detraying: Greifer je Spur
+LANE_X.forEach((x) => P.detray.push(clampUnit(x, Z_DET, CONV_Y + TRAY_H, { style: 'bar', barY: 0.55, frameH: 2.0 + DY })));
+// Tray-Outfeed: Querförderer + Schieber
+conveyor(LANE_X[0] - 0.3, Z_OUT, -3.95, Z_OUT, { width: 0.7, type: 'belt', y: CONV_Y - 0.004 });
+conveyor(LANE_X[3] + 0.3, Z_OUT, 3.95, Z_OUT, { width: 0.7, type: 'belt', y: CONV_Y - 0.004 });
+conveyor(LANE_X[1] + 0.3, Z_OUT, LANE_X[2] - 0.3, Z_OUT, { width: 0.7, type: 'belt', y: CONV_Y - 0.004, legs: false });
+conveyor(0, Z_OUT + 0.36, 0, 9.4, { width: 0.52, type: 'belt', y: CONV_Y - 0.004 });
+const trayPark = [LANE_X[0] + 0.27, LANE_X[1] - 0.27, LANE_X[2] + 0.27, LANE_X[3] - 0.27];
+trayPark.forEach((px) => P.trayPusher.push(pusher(px, Z_OUT, { plateL: 0.6, rodZ: 0.38, beamY: 1.55 + DY })));
+for (const s of [-1, 1]) beamX(-3.6, 3.6, Z_OUT + s * 0.38, 1.55 + DY);
+for (const x of [-3.6, 3.6]) for (const s of [-1, 1]) box(0.08, 1.7 + DY, 0.08, M.frame, x, (1.7 + DY) / 2, Z_OUT + s * 0.38);
+// Vorstapler 1–4: je Spur ein Hubwerk, einen Förderplatz vor der Querübergabe (nur Maschine MIT Vorstapelung)
+if (pre) LANE_X.forEach((x) => P.preLift.push(clampUnit(x, Z_PS, CONV_Y, { style: 'bar', barY: 0.72, frameH: 2.1 + DY })));
+// Querübergabe: Schieber 1→2 und 4→3
+P.prePusher.push(pusher(LANE_X[0] - CRATE_W / 2 - 0.045, Z_PRE, { plateL: 0.5, rodZ: 0.36, beamY: 1.75 + DY }));
+P.prePusher.push(pusher(LANE_X[3] + CRATE_W / 2 + 0.045, Z_PRE, { plateL: 0.5, rodZ: 0.36, beamY: 1.75 + DY }));
+for (const [a, b] of [[-2.4, -0.6], [0.6, 2.4]]) {
+  for (const s of [-1, 1]) beamX(a, b, Z_PRE + s * 0.36, 1.75 + DY);
+  for (const x of [a, b]) for (const s of [-1, 1]) box(0.08, 1.9 + DY, 0.08, M.frame, x, (1.9 + DY) / 2, Z_PRE + s * 0.36);
+  const xa = a < 0 ? LANE_X[0] + 0.28 : LANE_X[2] + 0.28, xb = a < 0 ? LANE_X[1] - 0.28 : LANE_X[3] - 0.28;
+  box(Math.abs(xb - xa), 0.02, 0.62, M.plate, (xa + xb) / 2, CONV_Y - 0.01, Z_PRE);
+}
+// Stacker: Hubplattform (Rollenbahn) senkt sich mit dem wachsenden Turm bis auf Palettierebene ab
+for (const x of [LANE_X[1], LANE_X[2]]) {
+  const H = CONV_Y + 1.0;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    box(0.09, H, 0.09, M.frame, x + sx * 0.44, H / 2, Z_STK + sz * 0.42);
+  }
+  for (const sx of [-1, 1]) box(0.1, 0.1, 0.94, M.frame, x + sx * 0.44, H, Z_STK);
+  for (const sz of [-1, 1]) box(0.98, 0.1, 0.1, M.frame, x, H, Z_STK + sz * 0.42);
+  for (const sx of [-1, 1]) box(0.03, H - 0.2, 0.03, M.rod, x + sx * 0.5, H / 2, Z_STK); // Führungen
+  box(0.3, 0.22, 0.3, M.frameDark, x + 0.62, H - 0.1, Z_STK + 0.42);                    // Hubantrieb
+  const plat = mover(new THREE.Group()); plat.position.set(x, CONV_Y, Z_STK);
+  box(0.56, 0.05, 0.76, M.frameDark, 0, -0.075, 0, plat);
+  for (let k = 0; k < 7; k++) cyl(0.024, 0.54, M.roller, 0, -0.026, -0.33 + k * 0.11, 'x', plat);
+  for (const sx of [-1, 1]) { box(0.04, 0.1, 0.76, M.rail, sx * 0.3, -0.04, 0, plat); box(0.16, 0.22, 0.2, M.act, sx * 0.4, -0.08, 0, plat); }
+  world.add(plat);
+  P.stackLift.push(plat);
+  // Grube/Rahmen unten und Rollenbahn auf Palettierebene zum Palettierer
+  conveyor(x, Z_STK - 0.42, x, -3.02, { y: Y_PAL });
+}
+// Palettierer (tiefer, auf Palettierebene): Sammeltisch, Schieber, Rahmen
+box(1.14, 0.02, 1.24, M.plate, 0, Y_PAL - 0.012, Z_PAL);
+box(X_PAL - 0.4 - 1.13, 0.02, 1.24, M.plate, (1.13 + X_PAL - 0.4) / 2, Y_PAL - 0.012, Z_PAL);
+for (const [x0, x1] of [[-0.57, 0.57], [1.13, X_PAL - 0.4]]) for (const sz of [-1, 1]) for (const sx of [0, 1]) {
+  box(0.05, Y_PAL - 0.03, 0.05, M.frameDark, sx ? x1 - 0.03 : x0 + 0.03, (Y_PAL - 0.03) / 2, Z_PAL + sz * 0.58);
+}
+box(0.04, 0.04, 1.24, M.frameDark, -1.16, Y_PAL, Z_PAL);
+const palX1 = X_PAL + 0.7;
+portal(-1.6, palX1, Z_PAL - 0.85, Z_PAL + 0.85, 2.6);
+for (const s of [-1, 1]) beamX(-1.6, palX1, Z_PAL + s * 0.5, 2.45);
+P.palPusher = pusher(-1.28, Z_PAL, { plateH: 1.55, plateL: 1.22, plateY: Y_PAL + 0.02, beamY: 2.45, rodZ: 0.5 });
+// Palettenförderer (Kettenförderer)
+{
+  const yTop = Y_PAL - PALLET_H, z0 = Z_PAL_IN + 0.8, z1 = Z_PAL_OUT - 0.4;
+  for (const s of [-1, 1]) {
+    box(0.08, 0.06, z0 - z1, M.chain, X_PAL + s * 0.3, yTop - 0.03, (z0 + z1) / 2);
+    box(0.06, 0.16, z0 - z1, M.rail, X_PAL + s * 0.36, yTop - 0.1, (z0 + z1) / 2);
+  }
+  for (let z = z1 + 0.3; z < z0; z += 1.4) for (const s of [-1, 1]) box(0.06, yTop - 0.06, 0.06, M.frameDark, X_PAL + s * 0.36, (yTop - 0.06) / 2, z);
+}
+// Bodenmarkierung Sicherheitsbereich Palettierer
+for (const [w, d, x, z] of [[palX1 + 1.8, 0.06, (palX1 - 1.7) / 2, Z_PAL - 1.0], [palX1 + 1.8, 0.06, (palX1 - 1.7) / 2, Z_PAL + 1.0], [0.06, 2.0, -1.7, Z_PAL]]) box(w, 0.004, d, M.zone, x, 0.003, z);
+
+// Beschriftung
+LANE_X.forEach((x, i) => {
+  label(String(i + 1), x, 0.25, 9.05, 'num');
+  if (pre) label(String(i + 1), x, CONV_Y + 1.45, Z_PS, 'num');
+  else label(String(i + 1), x, CONV_Y + 1.3, Z_PRE + 0.55, 'num');
+});
+label('Infeed Tray + Behälter', -1.4, 0.05, 10.3); label('Infeed Tray + Behälter', 1.4, 0.05, 10.3);
+label('Detraying', -1.4, 2.2 + DY, Z_DET); label('Detraying', 1.4, 2.2 + DY, Z_DET);
+label('Outfeed Tray ←', -3.4, 1.15 + DY, Z_OUT); label('→ Outfeed Tray', 3.4, 1.15 + DY, Z_OUT); label('Outfeed Tray ↓', 0, 1.15 + DY, Z_OUT + 1.2);
+if (pre) { label('Pre-Stacker 1 / 2', -1.4, CONV_Y + 1.75, Z_PS); label('Pre-Stacker 3 / 4', 1.4, CONV_Y + 1.75, Z_PS); }
+label('Querübergabe', -1.4, CONV_Y + 1.1, Z_PRE - 0.1); label('Querübergabe', 1.4, CONV_Y + 1.1, Z_PRE - 0.1);
+label('Stacker (absenkend)', LANE_X[1], CONV_Y + 1.25, Z_STK); label('Stacker (absenkend)', LANE_X[2], CONV_Y + 1.25, Z_STK);
+label('Palletizer (Palettierebene)', 0.9, 2.85, Z_PAL);
+label('Infeed Leer-EURO-PAL', X_PAL, 0.25, Z_PAL_IN + 0.6); label('Outfeed beladen', X_PAL, 0.25, Z_PAL_OUT + 0.6);
+// Maschinentitel (immer sichtbar)
+const tEl = document.createElement('div'); tEl.className = 'title ' + (pre ? 'a' : 'b');
+const title = new CSS2DObject(tEl); title.position.set(ox + 0.4, CONV_Y + 2.9, 1.2); scene.add(title);
+world = worldRoot; labelParent = labelGroup;
+return { ox, pre, P, dyn, titleEl: tEl, tag: pre ? '[mit]' : '[ohne]', name: pre ? 'MIT Vorstapelung' : 'OHNE Vorstapelung', stats: {}, status: {} };
+}
+const machines = [buildMachine(0, true), buildMachine(OX_B, false)];
+const moverHome = movers.map((o) => o.position.clone());
+
+// ---------- Fabriken: Behälter, Tray, Palette ----------
+const crateTemplates = [null, null, null, null];
+const labelMats = LANE_COLORS.map((c, i) => {
+  const cv = document.createElement('canvas'); cv.width = 128; cv.height = 72;
+  const g = cv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, 128, 72);
+  g.strokeStyle = c; g.lineWidth = 8; g.strokeRect(4, 4, 120, 64);
+  g.fillStyle = '#111'; g.font = 'bold 54px Segoe UI, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(i + 1), 64, 40);
+  const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 });
+});
+const labelGeo = new THREE.PlaneGeometry(0.16, 0.09);
+function proceduralCrate(lane) {
+  const g = new THREE.Group(), m = crateMats[lane], t = 0.014;
+  box(CRATE_W, 0.018, CRATE_L, m, 0, 0.009, 0, g);
+  for (const s of [-1, 1]) {
+    box(t, CRATE_H, CRATE_L, m, s * (CRATE_W / 2 - t / 2), CRATE_H / 2, 0, g);
+    box(CRATE_W - 2 * t, CRATE_H, t, m, 0, CRATE_H / 2, s * (CRATE_L / 2 - t / 2), g);
+  }
+  return g;
+}
+function makeCrate(lane) {
+  const g = new THREE.Group();
+  g.add(crateTemplates[lane] ? crateTemplates[lane].clone() : proceduralCrate(lane));
+  for (const s of [-1, 1]) {
+    const l = new THREE.Mesh(labelGeo, labelMats[lane]);
+    l.position.set(s * (CRATE_W / 2 + 0.004), 0.12, 0); l.rotation.y = s * Math.PI / 2; g.add(l);
+  }
+  g.userData.lane = lane;
+  return g;
+}
+function makeTray() {
+  const g = new THREE.Group();
+  box(TRAY_W, 0.02, TRAY_L, M.tray, 0, 0.01, 0, g);
+  for (const s of [-1, 1]) {
+    box(0.02, TRAY_H, TRAY_L, M.tray, s * (TRAY_W / 2 - 0.01), TRAY_H / 2, 0, g);
+    box(TRAY_W, TRAY_H, 0.02, M.tray, 0, TRAY_H / 2, s * (TRAY_L / 2 - 0.01), g);
+  }
+  return g;
+}
+function makePallet() { // EURO-Palette 1200 (Z) × 800 (X) × 144
+  const g = new THREE.Group();
+  for (const x of [-0.35, 0, 0.35]) box(x === 0 ? 0.145 : 0.1, 0.022, 1.2, M.woodDark, x, 0.011, 0, g);
+  for (const x of [-0.35, 0, 0.35]) for (const z of [-0.5275, 0, 0.5275]) box(x === 0 ? 0.145 : 0.1, 0.078, z === 0 ? 0.145 : 0.145, M.wood, x, 0.061, z, g);
+  for (const z of [-0.5275, 0, 0.5275]) box(0.8, 0.022, 0.145, M.woodDark, 0, 0.111, z, g);
+  for (const x of [-0.3375, -0.17, 0, 0.17, 0.3375]) box(x === 0 || Math.abs(x) > 0.3 ? 0.125 : 0.1, 0.022, 1.2, M.wood, x, 0.133, 0, g);
+  return g;
+}
+
+// ======================= Prozesslogik =======================
+let sim = new Sim();
+const ui = { steps: {}, log: [] };
+const fmtTime = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+/** deterministischer Zufall: beide Maschinen erhalten exakt dieselbe Zufuhr je Spur */
+function rngFor(seed) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+const STAT_KEYS = ['Behälter eingespeist', 'Stackerhübe', 'Türme fertig', 'Behälter palettiert', 'Paletten abgeführt'];
+function makeHooks(m) {
+  return {
+    log(t) { ui.log.unshift(`${fmtTime(sim.t)} ${m.tag} ${t}`); ui.log.length = Math.min(ui.log.length, 12); },
+    pulse(k) { if (m.pre) ui.steps[k] = sim.t; },
+    status(k, t) { m.status[k] = t; },
+    count(k, n = 1) { m.stats[k] = (m.stats[k] || 0) + n; },
+  };
+}
+
+function startProcess(m, pairsPerTower, seed) {
+  const hooks = makeHooks(m), P = m.P, dynamic = m.dyn;
+  m.stats = Object.fromEntries(STAT_KEYS.map((k) => [k, 0])); m.status = {};
+  const S = SPEED;
+  const dur = (d) => Math.max(0.35, Math.abs(d) / S);
+  const Slot = (z) => ({ z, occ: null, ready: false });
+  const lanes = LANE_X.map((x) => ({ x, inSlots: Z_IN.map(Slot), det: Slot(Z_DET), out: Slot(Z_OUT), q: Z_Q.map(Slot), ps: Slot(Z_PS), pre: Slot(Z_PRE) }));
+  const center = { busy: false };
+  const stackers = [0, 1].map((s) => ({ x: LANE_X[s === 0 ? 1 : 2], accepting: true, arrived: null }));
+  const palLanes = [0, 1].map(() => ({ towers: [], reserved: 0 }));
+  const pal = { pushing: false };
+  const palStation = { pallet: null, ready: false }, palWait = { pallet: null };
+  let crateNo = 0, palletNo = 0;
+  const side = (s) => (s === 0 ? 'links' : 'rechts');
+
+  function clampTo(cu, close, d = 0.35) {
+    const from = cu.right.position.x, to = close ? cu.closed : cu.open;
+    return sim.animate(d, (p) => { const v = from + (to - from) * smooth(p); cu.right.position.x = v; cu.left.position.x = -v; });
+  }
+  /** Staufördern: Slot für Slot vorrücken; der verlassene Slot wird beim Losfahren frei. */
+  function* travel(obj, slots, held) {
+    for (const s of slots) {
+      yield () => s.occ === null;
+      s.occ = obj; s.ready = false;
+      if (held) { held.occ = null; held.ready = false; }
+      yield sim.move(obj, { z: s.z }, dur(obj.position.z - s.z), linear);
+      s.ready = true; held = s;
+    }
+  }
+
+  // 1) Infeed: Tray + Behälter
+  function* feeder(i) {
+    const ln = lanes[i], rng = rngFor(seed * 7 + i);
+    yield 0.4 + i * 0.9 + rng();
+    for (;;) {
+      const s0 = ln.inSlots[0];
+      yield () => s0.occ === null;
+      const unit = new THREE.Group(); unit.position.set(ln.x, CONV_Y, s0.z);
+      const tray = makeTray(), crate = makeCrate(i);
+      crate.position.y = TRAY_H; crate.userData.no = ++crateNo;
+      unit.add(tray, crate); unit.userData = { tray, crate };
+      unit.scale.setScalar(0.01); dynamic.add(unit);
+      sim.animate(0.5, (p) => unit.scale.setScalar(Math.max(0.01, smooth(p))));
+      s0.occ = unit; s0.ready = true;
+      hooks.count('Behälter eingespeist'); hooks.pulse(1);
+      sim.spawn(travel(unit, [...ln.inSlots.slice(1), ln.det], s0));
+      yield 1.0 + rng() * 2.5; // unregelmäßige Zufuhr (für beide Maschinen identisch)
+    }
+  }
+
+  // 2) Detraying: Behälter anheben, Tray zum Outfeed, Behälter absetzen
+  function* detray(i) {
+    const ln = lanes[i], cu = P.detray[i], key = `Detraying ${i + 1}`;
+    for (;;) {
+      hooks.status(key, 'wartet auf Tray');
+      yield () => ln.det.ready;
+      const unit = ln.det.occ, { tray, crate } = unit.userData;
+      hooks.pulse(2); hooks.status(key, 'Behälter greifen + anheben');
+      yield clampTo(cu, true);
+      dynamic.attach(crate); dynamic.attach(tray); unit.removeFromParent();
+      const lift = 0.14;
+      sim.move(crate, { y: crate.position.y + lift }, 0.7);
+      yield sim.move(cu.group, { y: cu.group.position.y + lift }, 0.7);
+      hooks.status(key, 'Tray fährt zum Outfeed');
+      yield () => ln.out.occ === null;
+      ln.out.occ = tray;
+      yield sim.move(tray, { z: Z_OUT }, dur(Z_DET - Z_OUT), linear);
+      sim.spawn(trayOut(i, tray));
+      hooks.status(key, 'Behälter auf Förderer absetzen');
+      sim.move(crate, { y: CONV_Y }, 0.8);
+      yield sim.move(cu.group, { y: CONV_Y }, 0.8);
+      yield clampTo(cu, false, 0.3);
+      sim.move(cu.group, { y: CONV_Y + TRAY_H }, 0.4);
+      ln.det.occ = crate;
+      sim.spawn(crateRun(i, crate));
+      hooks.status(key, 'Behälter fährt ab');
+      yield () => ln.det.occ !== crate;
+    }
+  }
+
+  // 3) Outfeed: Tray seitlich abschieben (1 links, 2 rechts, 3 links, 4 rechts)
+  function* trayOut(i, tray) {
+    const ln = lanes[i], pu = P.trayPusher[i], key = `Outfeed ${i + 1}`;
+    const dir = i === 0 || i === 2 ? -1 : 1;
+    const target = i === 0 ? -3.05 : i === 3 ? 3.05 : 0;
+    if (i === 1 || i === 2) { hooks.status(key, 'wartet auf Sammelband'); yield () => !center.busy; center.busy = true; }
+    hooks.pulse(3); hooks.status(key, `Tray abschieben ${dir < 0 ? '←' : '→'}`);
+    const off = TRAY_W / 2 + 0.015;
+    const contact = ln.x - dir * off, end = target - dir * off;
+    yield sim.move(pu, { x: contact }, 0.3);
+    const t = Math.max(0.9, Math.abs(end - contact) / 0.8);
+    sim.move(tray, { x: target }, t);
+    yield sim.move(pu, { x: end }, t);
+    yield sim.move(pu, { x: pu.userData.park }, Math.max(0.6, Math.abs(end - contact) / 1.4));
+    ln.out.occ = null; hooks.count('Trays abgeführt'); hooks.status(key, 'frei');
+    if (i === 0 || i === 3) {
+      yield sim.move(tray, { x: target + dir * 0.85 }, 1.6, linear);
+    } else {
+      yield sim.move(tray, { z: Z_OUT + 0.8 }, dur(0.8), linear);
+      center.busy = false;
+      yield sim.move(tray, { z: 9.3 }, dur(9.3 - Z_OUT - 0.8), linear);
+    }
+    sim.animate(0.4, (p) => tray.scale.setScalar(Math.max(0.01, 1 - p)));
+    yield 0.4; tray.removeFromParent();
+  }
+
+  // 4) Behälter fährt ohne Tray über Outfeed und Pufferstrecke zum Pre-Stacker
+  function* crateRun(i, crate) {
+    hooks.pulse(4);
+    const ln = lanes[i];
+    yield* travel(crate, m.pre ? [ln.out, ...ln.q, ln.ps] : [ln.out, ...ln.q, ln.ps, ln.pre], ln.det);
+  }
+
+  // 5) Vorstapler 1–4 (je Spur): Behälter anheben, nächster Behälter derselben Spur fährt darunter, absetzen → Paar
+  function* lanePrestack(i) {
+    const ln = lanes[i], cu = P.preLift[i], key = `Pre-Stacker ${i + 1}`;
+    for (;;) {
+      hooks.status(key, 'wartet auf Behälter');
+      yield () => ln.ps.ready;
+      const upper = ln.ps.occ;
+      hooks.pulse(5); hooks.status(key, 'Behälter greifen + anheben');
+      yield clampTo(cu, true);
+      const lift = CRATE_H + 0.07;
+      sim.move(upper, { y: CONV_Y + lift }, 0.9);
+      yield sim.move(cu.group, { y: CONV_Y + lift }, 0.9);
+      ln.ps.occ = null; ln.ps.ready = false; // Platz unter dem angehobenen Behälter frei
+      hooks.status(key, 'nächster Behälter fährt darunter');
+      yield () => ln.ps.ready && ln.ps.occ !== upper;
+      const lower = ln.ps.occ;
+      hooks.pulse(5); hooks.status(key, 'Behälter absetzen');
+      sim.move(upper, { y: CONV_Y + PITCH }, 0.7);
+      yield sim.move(cu.group, { y: CONV_Y + PITCH }, 0.7);
+      yield clampTo(cu, false, 0.3);
+      sim.move(cu.group, { y: CONV_Y }, 0.5);
+      const pair = new THREE.Group(); pair.position.set(ln.x, CONV_Y, Z_PS); dynamic.add(pair);
+      pair.attach(lower); pair.attach(upper);
+      ln.ps.occ = pair; ln.ps.ready = true;
+      hooks.count('Paare gebildet');
+      hooks.status(key, 'Paar fährt zur Querübergabe');
+      yield* travel(pair, [ln.pre], ln.ps);
+      hooks.status(key, 'frei');
+    }
+  }
+
+  // 5b) OHNE Vorstapelung: Behälter 1 (4) wird nur quer auf Spur 2 (3) übergeben, jeder Behälter einzeln zum Stacker
+  function* merger(s) {
+    const top = s === 0 ? 1 : 2, bot = s === 0 ? 0 : 3;
+    const lt = lanes[top], lb = lanes[bot], pu = P.prePusher[s], st = stackers[s];
+    const key = `Querübergabe ${side(s)}`, RES = { reserved: true };
+    let preferBot = false;
+    for (;;) {
+      hooks.status(key, 'wartet auf Behälter');
+      let pick = null;
+      yield () => {
+        const canT = lt.pre.ready, canB = lb.pre.ready && (lt.pre.occ === null || lt.pre.occ === RES);
+        pick = preferBot ? (canB ? 'bot' : canT ? 'top' : null) : (canT ? 'top' : canB ? 'bot' : null);
+        return pick !== null;
+      };
+      let crate;
+      if (pick === 'bot') {
+        crate = lb.pre.occ; lt.pre.occ = crate; lt.pre.ready = false;
+        hooks.status(key, `${m.pre ? 'Paar' : 'Behälter'} ${bot + 1} quer übergeben ${s === 0 ? '→' : '←'}`);
+        const dir = Math.sign(lt.x - lb.x), off = CRATE_W / 2 + 0.015;
+        const contact = lb.x - dir * off, end = lt.x - dir * off;
+        yield sim.move(pu, { x: contact }, 0.3);
+        const t = Math.max(1, Math.abs(end - contact) / 0.7);
+        sim.move(crate, { x: lt.x }, t);
+        yield sim.move(pu, { x: end }, t);
+        lb.pre.occ = null; lb.pre.ready = false;
+        sim.move(pu, { x: pu.userData.park }, 1.0);
+      } else crate = lt.pre.occ;
+      const unit = m.pre ? crate : new THREE.Group();
+      if (!m.pre) { unit.position.set(lt.x, CONV_Y, Z_PRE); dynamic.add(unit); unit.attach(crate); }
+      hooks.status(key, m.pre ? 'Paar wartet auf Stacker' : 'Einzelbehälter wartet auf Stacker');
+      yield () => st.accepting;
+      st.accepting = false;
+      hooks.pulse(6); hooks.status(key, m.pre ? 'Paar fährt in Stacker' : 'Behälter fährt in Stacker');
+      lt.pre.occ = pick === 'top' && lb.pre.occ !== null ? RES : null; lt.pre.ready = false;
+      preferBot = pick === 'top';
+      yield sim.move(unit, { z: Z_STK }, dur(Z_PRE - Z_STK), linear);
+      st.arrived = unit;
+    }
+  }
+
+  // 7) Stacker (absenkend): Einheit fährt oben auf die Plattform, Plattform senkt um eine Einheit ab,
+  //    nächste Einheit wird oben aufgesetzt → Turm wächst von unten nach oben; fertiger Turm auf Palettierebene
+  function* stacker(s) {
+    const st = stackers[s], plat = P.stackLift[s], key = `Stacker ${side(s)}`;
+    const per = m.pre ? 2 : 1, UNIT = per * PITCH, unitsPerTower = (pairsPerTower * 2) / per;
+    const uName = m.pre ? 'Paar' : 'Behälter';
+    let tower = null, units = 0;
+    for (;;) {
+      hooks.status(key, units ? `Turm (${units * per}) abgesenkt – wartet auf ${uName}` : `Plattform oben – wartet auf ${uName}`);
+      yield () => st.arrived !== null;
+      const u = st.arrived; st.arrived = null;
+      hooks.pulse(7); hooks.count('Stackerhübe');
+      if (!tower) { tower = new THREE.Group(); tower.position.set(st.x, plat.position.y, Z_STK); dynamic.add(tower); }
+      for (const c of [...u.children]) tower.attach(c);
+      u.removeFromParent();
+      units++;
+      if (units < unitsPerTower) {
+        hooks.status(key, `Plattform senkt um ${uName} ab (${units * per} Behälter)`);
+        const y = plat.position.y - UNIT;
+        sim.move(tower, { y }, 1.0);
+        yield sim.move(plat, { y }, 1.0);
+        st.accepting = true;
+      } else {
+        hooks.count('Türme fertig');
+        hooks.log(`Turm ${side(s)} fertig (${units * per} Behälter)`);
+        hooks.status(key, 'Turm auf Palettierebene absenken');
+        const t = Math.max(1, (plat.position.y - Y_PAL) / 0.5);
+        sim.move(tower, { y: Y_PAL }, t);
+        yield sim.move(plat, { y: Y_PAL }, t);
+        hooks.status(key, 'Turm fertig – wartet auf Palettierer');
+        const pl = palLanes[s];
+        yield () => !pal.pushing && pl.reserved < 2;
+        const idx = pl.reserved++;
+        hooks.pulse(8); hooks.status(key, 'Turm fährt in Palettierer');
+        const tw = tower; tower = null; units = 0;
+        sim.spawn(towerRun(s, tw, idx));
+        yield dur(0.8); // Turm hat Plattform verlassen
+        hooks.status(key, 'Plattform fährt hoch');
+        yield sim.move(plat, { y: CONV_Y }, Math.max(1, (CONV_Y - Y_PAL) / 0.6));
+        st.accepting = true;
+      }
+    }
+  }
+  function* towerRun(s, tower, idx) {
+    const z = Z_SLOTS[idx];
+    yield sim.move(tower, { z }, dur(tower.position.z - z), linear);
+    palLanes[s].towers.push(tower);
+  }
+
+  // Leerpaletten-Zufuhr
+  function* palletFeeder() {
+    for (;;) {
+      yield () => palWait.pallet === null;
+      const p = makePallet(); p.position.set(X_PAL, Y_PAL - PALLET_H, Z_PAL_IN); dynamic.add(p);
+      p.scale.setScalar(0.01); sim.animate(0.5, (k) => p.scale.setScalar(Math.max(0.01, smooth(k))));
+      palWait.pallet = p;
+      yield sim.move(p, { z: Z_PAL_WAIT }, dur(Z_PAL_IN - Z_PAL_WAIT), linear);
+      yield () => palStation.pallet === null;
+      palStation.pallet = p; palWait.pallet = null;
+      hooks.status('Palettenplatz', 'Leerpalette fährt ein');
+      yield sim.move(p, { z: Z_PAL }, dur(Z_PAL_WAIT - Z_PAL), linear);
+      palStation.ready = true;
+      hooks.status('Palettenplatz', 'Leerpalette bereit');
+    }
+  }
+  // 8) Palettierer: 2+2 Türme sammeln, zusammenschieben, auf Palette schieben
+  function* palletizer() {
+    const pu = P.palPusher, key = 'Palettierer';
+    for (;;) {
+      hooks.status(key, 'sammelt Türme');
+      yield () => palLanes[0].towers.length === 2 && palLanes[1].towers.length === 2 && palStation.ready;
+      pal.pushing = true; hooks.pulse(9);
+      const left = palLanes[0].towers, right = palLanes[1].towers;
+      hooks.status(key, 'Türme links → rechts zusammenschieben');
+      const off = CRATE_W / 2 + 0.015;
+      yield sim.move(pu, { x: LANE_X[1] - off }, 0.7);
+      for (const t of left) sim.move(t, { x: LANE_X[2] - CRATE_W }, 2.4);
+      yield sim.move(pu, { x: LANE_X[2] - CRATE_W - off }, 2.4);
+      hooks.status(key, '4 Türme auf Leerpalette schieben');
+      const shift = X_PAL - (LANE_X[2] - CRATE_W / 2);
+      for (const t of [...left, ...right]) sim.move(t, { x: t.position.x + shift }, 3.2);
+      yield sim.move(pu, { x: LANE_X[2] - CRATE_W - off + shift }, 3.2);
+      const p = palStation.pallet;
+      for (const t of [...left, ...right]) p.attach(t);
+      palLanes.forEach((l) => { l.towers = []; l.reserved = 0; });
+      pal.pushing = false;
+      palletNo++;
+      hooks.log(`Palette ${palletNo} beladen (${4 * pairsPerTower * 2} Behälter)`);
+      hooks.count('Behälter palettiert', 4 * pairsPerTower * 2);
+      sim.move(pu, { x: pu.userData.park }, 2.6);
+      hooks.status(key, 'Schieber fährt zurück');
+      hooks.status('Palettenplatz', 'Vollpalette fährt ab');
+      palStation.ready = false;
+      yield sim.move(p, { z: Z_PAL - 1.45 }, dur(1.45), linear);
+      palStation.pallet = null;
+      sim.spawn(palletOut(p, palletNo));
+    }
+  }
+  function* palletOut(p, n) {
+    yield sim.move(p, { z: Z_PAL_OUT }, dur(p.position.z - Z_PAL_OUT), linear);
+    hooks.count('Paletten abgeführt');
+    sim.animate(0.5, (k) => p.scale.setScalar(Math.max(0.01, 1 - k)));
+    yield 0.5; p.removeFromParent();
+  }
+
+  for (let i = 0; i < 4; i++) { sim.spawn(feeder(i)); sim.spawn(detray(i)); if (m.pre) sim.spawn(lanePrestack(i)); }
+  for (let s = 0; s < 2; s++) { sim.spawn(merger(s)); sim.spawn(stacker(s)); }
+  sim.spawn(palletFeeder()); sim.spawn(palletizer());
+}
+
+function restart() {
+  for (const m of machines) m.dyn.clear();
+  movers.forEach((o, i) => o.position.copy(moverHome[i]));
+  sim = new Sim();
+  ui.steps = {}; ui.log = [];
+  const pairs = Number(document.getElementById('pairs').value), seed = Math.floor(Math.random() * 1e6);
+  for (const m of machines) startProcess(m, pairs, seed);
+}
+
+// ======================= UI =======================
+let running = true, speed = 1.5;
+const $ = (id) => document.getElementById(id);
+$('play').onclick = () => { running = !running; $('play').textContent = running ? '⏸ Pause' : '▶ Start'; };
+$('reset').onclick = restart;
+$('pairs').onchange = restart;
+$('speed').oninput = (e) => { speed = Number(e.target.value); $('speedv').textContent = speed + '×'; };
+$('labels').onclick = () => { labelGroup.visible = !labelGroup.visible; $('labels').classList.toggle('on', labelGroup.visible); };
+const CX = OX_B / 2;
+const CAMS = { // [Position, Ziel, maschinenbezogen?]
+  compare: [[CX - 3.9, 21, 19], [CX - 3.7, 0, -0.6], false],
+  overview: [[8, 9.5, 12.5], [0.3, 0.8, 0.6], true],
+  detray: [[-5.2, 3.4, 7.6], [-0.4, 0.9, 4.0], true],
+  prestack: [[-6.6, 5.6, -1.2], [-0.6, 1.4, 2.0], true],
+  stacker: [[3.8, 3.4, 2.6], [0.2, 1.1, -0.2], true],
+  pallet: [[6.2, 4.0, 1.2], [0.9, 0.6, -2.6], true],
+  top: [[CX, 25, 1.01], [CX, 0, 0.6], false],
+};
+let camAnim = null;
+function goCam(name) {
+  document.querySelectorAll('#cams button').forEach((x) => x.classList.toggle('on', x.dataset.cam === name));
+  const [p, t, rel] = CAMS[name], ox = rel ? machines[Number($('camm').value)].ox : 0;
+  camAnim = { t0: performance.now(), fp: camera.position.clone(), ft: controls.target.clone(),
+    tp: new THREE.Vector3(p[0] + ox, p[1], p[2]), tt: new THREE.Vector3(t[0] + ox, t[1], t[2]) };
+}
+document.querySelectorAll('#cams button').forEach((b) => { b.onclick = () => goCam(b.dataset.cam); });
+$('camm').onchange = () => { const on = document.querySelector('#cams button.on'); if (on && CAMS[on.dataset.cam][2]) goCam(on.dataset.cam); };
+camera.position.set(...CAMS.compare[0]); controls.target.set(...CAMS.compare[1]);
+const stepEls = [...document.querySelectorAll('#steps li')];
+let uiTimer = 0;
+const perHour = (m) => (sim.t > 1 ? Math.round((m.stats['Behälter palettiert'] / sim.t) * 3600) : 0);
+function updateUI() {
+  for (const li of stepEls) { const t = ui.steps[li.dataset.step]; li.classList.toggle('active', t !== undefined && sim.t - t < 2.0); }
+  const [A, B] = machines;
+  const pa = A.stats['Behälter palettiert'], pb = B.stats['Behälter palettiert'];
+  const factor = pb > 0 ? (pa / pb).toFixed(2) + '×' : '–';
+  const row = (k, a, b, cls = '') => `<div class="${cls}">${k}</div><div class="a ${cls}">${a}</div><div class="b ${cls}">${b}</div>`;
+  $('stats').innerHTML = row('', 'mit', 'ohne', 'hd') + row('Simulationszeit', fmtTime(sim.t), fmtTime(sim.t)) +
+    STAT_KEYS.map((k) => row(k, A.stats[k], B.stats[k])).join('') +
+    row('Leistung Behälter/h', perHour(A), perHour(B), 'big') +
+    `<div class="big">Faktor mit / ohne</div><div class="a big" style="grid-column:span 2">${factor}</div>`;
+  for (const m of machines) m.titleEl.innerHTML = `${m.name}<small>${m.stats['Paletten abgeführt']} Paletten · ${perHour(m)} Behälter/h</small>`;
+  const st = (m) => Object.entries(m.status).sort(([a], [b]) => a.localeCompare(b, 'de'))
+    .map(([k, v]) => `<div><span>${k}</span><span>${v}</span></div>`).join('');
+  $('status').innerHTML = st(A); $('statusB').innerHTML = st(B);
+  $('log').textContent = ui.log.join('\n');
+}
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); labelRenderer.setSize(innerWidth, innerHeight);
+});
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (running) sim.step(dt * speed);
+  if (camAnim) {
+    const k = smooth((now - camAnim.t0) / 1200);
+    camera.position.lerpVectors(camAnim.fp, camAnim.tp, k); controls.target.lerpVectors(camAnim.ft, camAnim.tt, k);
+    if (k >= 1) camAnim = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
+  if ((uiTimer += dt) > 0.2) { uiTimer = 0; updateUI(); }
+  requestAnimationFrame(loop);
+}
+
+// GLB-Behälter laden (eingebettet), danach starten; bei Fehler prozedurale Behälter
+function prepareTemplates(root) {
+  for (let lane = 0; lane < 4; lane++) {
+    const model = root.clone(true);
+    model.traverse((o) => { if (o.isMesh) { o.material = crateMats[lane]; o.castShadow = true; o.receiveShadow = true; } });
+    const rot = new THREE.Group(); rot.add(model);
+    const b0 = new THREE.Box3().setFromObject(model), s0 = b0.getSize(new THREE.Vector3());
+    if (s0.x > s0.z) rot.rotation.y = Math.PI / 2; // Längsseite in Förderrichtung
+    rot.updateMatrixWorld(true);
+    const b = new THREE.Box3().setFromObject(rot), s = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
+    rot.position.set(-c.x, -b.min.y, -c.z);
+    const outer = new THREE.Group(); outer.scale.set(CRATE_W / s.x, CRATE_H / s.y, CRATE_L / s.z); outer.add(rot);
+    crateTemplates[lane] = outer;
+  }
+}
+function boot() { restart(); requestAnimationFrame(loop); }
+window.__vs = { ui, machines, get sim() { return sim; }, dynamic, camera, controls, step: (s) => sim.step(s) };
+try {
+  const bin = Uint8Array.from(atob(window.CRATE_GLB_B64 || ''), (c) => c.charCodeAt(0));
+  if (!bin.length) throw new Error('kein GLB');
+  new GLTFLoader().parse(bin.buffer, '', (gltf) => { prepareTemplates(gltf.scene); boot(); }, (e) => { console.warn(e); boot(); });
+} catch (e) { console.warn('Behälter-GLB nicht geladen, prozedurale Behälter', e); boot(); }
+</script>
+</body>
+</html>
