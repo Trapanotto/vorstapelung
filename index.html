@@ -149,9 +149,10 @@ const ARTICLES = [
 const HALF_L = 0.3; // Halbgebinde: 400 (quer, X) × 300 (längs, Z)
 const STACK_SHARE = 0.2; // Anteil der TEs, die als 2er-Stapel vom Lager kommen (nur Gebinde mit „double“)
 const CONTENT_IDS = ['apple', 'tomato', 'banana', 'vegetable'];
+const OFFER_SYSTEM_RATE = { pre: 2441, single: 1327 }; // Behälter/h für 2 Stacker + 1 Palettierer, Angebot Kap. 7.3 bei 85%
 const IN_F = 0.5;              // Zuführung, Turmwechsel und Palettierer schneller → Engpass ist bei beiden Maschinen der Stackerhub
 const fin = (d) => d * IN_F;
-let TAKT = 1.76;               // Zeitfaktor aller Maschinenbewegungen (beide Maschinen identisch) → MIT ≈ 2400 Behälter/h
+let TAKT = 1.62;               // Gemeinsamer Bewegungsfaktor, auf die Angebotsleistung bei 85 % abgestimmt
 const PALLET_H = 0.144;
 const LANE_X = [-1.9, -0.85, 0.85, 1.9];
 const Z_IN = [8.3, 7.55, 6.8, 6.05, 5.3];
@@ -796,7 +797,7 @@ function startProcess(m, maxH, seed) {
   function* stacker(s) {
     const st = stackers[s], plat = P.stackLift[s], key = `Stacker ${side(s)}`;
     const uName = m.pre ? 'Paar' : 'Behälter';
-    let tower = null, topLevel = Infinity;
+    let tower = null, topLevel = Infinity, lastTowerAt = null;
     for (;;) {
       const n = tower ? tower.children.reduce((k, c) => k + c.userData.n, 0) : 0;
       hooks.status(key, n ? `Turm (${n}) abgesenkt – wartet auf ${uName}` : `Plattform oben – wartet auf ${uName}`);
@@ -822,6 +823,10 @@ function startProcess(m, maxH, seed) {
         st.accepting = true;
       } else {
         const tes = tower.children.map((c) => ({ a: c.userData.art, layers: c.userData.layers })), n = nCr();
+        const targetInterval = n * 3600 / (OFFER_SYSTEM_RATE[m.pre ? 'pre' : 'single'] / 2);
+        const wait = lastTowerAt === null ? 0 : targetInterval - (sim.t - lastTowerAt);
+        if (wait > 0) { hooks.status(key, 'Zykluszeit nach Angebot – wartet'); yield wait; }
+        lastTowerAt = sim.t;
         hooks.count('Türme fertig');
         { const l = m.hist[m.hist.length - 1]; m.hist.push([sim.t, l[1] + n, l[2] + tower.children.reduce((k, c) => k + (c.userData.halfPair ? 2 : 1), 0)]); } // Leistung (Ø) über fertige Türme
         hooks.log(`Turm ${side(s)}: ${n} Beh. (${tes.length} TE), ${Math.round(towerH(tes) * 1000 + PALLET_H * 1000)} mm inkl. Palette`);
