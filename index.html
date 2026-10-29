@@ -154,7 +154,7 @@ const CONTENT_IDS = ['apple', 'tomato', 'banana', 'vegetable'];
 const STK_DOWN_V = 0.15;       // Stacker: Plattform absenken je Hub (m/s); Einfahrt mit Fördergeschwindigkeit
 const TOWER_DOWN_V = 0.2;      // fertiger Turm: Absenken auf Palettierebene in m/s
 const TOWER_V = 0.3;           // fertiger Turm: Abfuhr zum Palettierer in m/s
-const IN_F = 0.5;              // Zuführung, Turmwechsel und Palettierer schneller → Engpass ist bei beiden Maschinen der Stackerhub
+const IN_F = 0.5;              // nur noch für Tray-Abfuhr nach dem Abschieben und Plattform-Rückfahrt
 const fin = (d) => d * IN_F;
 let TAKT = 1;                  // Keine zusätzliche Verlangsamung gegenüber der Angebots-Zykluszeit
 const PALLET_H = 0.144;
@@ -924,11 +924,11 @@ function startProcess(m, maxH, seed) {
       const p = makePallet(); p.position.set(X_PAL, Y_PAL - PALLET_H, Z_PAL_IN); dynamic.add(p);
       p.scale.setScalar(0.01); sim.animate(0.5, (k) => p.scale.setScalar(Math.max(0.01, smooth(k))));
       palWait.pallet = p;
-      yield sim.move(p, { z: Z_PAL_WAIT }, fin(dur(Z_PAL_IN - Z_PAL_WAIT)), linear);
+      yield sim.move(p, { z: Z_PAL_WAIT }, dur(Z_PAL_IN - Z_PAL_WAIT), linear);
       yield () => palStation.pallet === null;
       palStation.pallet = p; palWait.pallet = null;
       hooks.status('Palettenplatz', 'Leerpalette fährt ein');
-      yield sim.move(p, { z: Z_PAL }, fin(dur(Z_PAL_WAIT - Z_PAL)), linear);
+      yield sim.move(p, { z: Z_PAL }, dur(Z_PAL_WAIT - Z_PAL), linear);
       palStation.ready = true;
       hooks.status('Palettenplatz', 'Leerpalette bereit');
     }
@@ -943,13 +943,13 @@ function startProcess(m, maxH, seed) {
       const left = palLanes[0].towers, right = palLanes[1].towers;
       hooks.status(key, 'Türme links → rechts zusammenschieben');
       const off = CRATE_W / 2 + 0.015;
-      yield sim.move(pu, { x: LANE_X[1] - off }, fin(0.7));
-      for (const t of left) sim.move(t, { x: LANE_X[2] - CRATE_W }, fin(2.4));
-      yield sim.move(pu, { x: LANE_X[2] - CRATE_W - off }, fin(2.4));
+      yield sim.move(pu, { x: LANE_X[1] - off }, 0.7);
+      for (const t of left) sim.move(t, { x: LANE_X[2] - CRATE_W }, 2.4);
+      yield sim.move(pu, { x: LANE_X[2] - CRATE_W - off }, 2.4);
       hooks.status(key, '4 Türme auf Leerpalette schieben');
       const shift = X_PAL - (LANE_X[2] - CRATE_W / 2);
-      for (const t of [...left, ...right]) sim.move(t, { x: t.position.x + shift }, fin(3.2));
-      yield sim.move(pu, { x: LANE_X[2] - CRATE_W - off + shift }, fin(3.2));
+      for (const t of [...left, ...right]) sim.move(t, { x: t.position.x + shift }, 3.2);
+      yield sim.move(pu, { x: LANE_X[2] - CRATE_W - off + shift }, 3.2);
       const p = palStation.pallet;
       for (const t of [...left, ...right]) p.attach(t);
       palletNo++;
@@ -957,13 +957,13 @@ function startProcess(m, maxH, seed) {
       hooks.log(`Palette ${palletNo} beladen (${n} Behälter)`);
       hooks.count('Behälter palettiert', n);
       hooks.status(key, 'Schieber fährt zurück');
-      yield sim.move(pu, { x: pu.userData.park }, fin(2.6));
+      yield sim.move(pu, { x: pu.userData.park }, 2.6);
       palLanes.forEach((l) => { l.towers = []; l.reserved = 0; });
       pal.pushing = false;
       hooks.status(key, 'sammelt Türme');
       hooks.status('Palettenplatz', 'Vollpalette fährt ab');
       palStation.ready = false;
-      yield sim.move(p, { z: Z_PAL - 1.45 }, fin(dur(1.45)), linear);
+      yield sim.move(p, { z: Z_PAL - 1.45 }, dur(1.45), linear);
       palStation.pallet = null;
       sim.spawn(palletOut(p, palletNo));
     }
