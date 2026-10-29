@@ -151,11 +151,7 @@ const ARTICLES = [
 const HALF_L = 0.3; // Halbgebinde: 400 (quer, X) × 300 (längs, Z)
 const STACK_SHARE = 0.2; // Anteil der TEs, die als 2er-Stapel vom Lager kommen (nur Gebinde mit „double“)
 const CONTENT_IDS = ['apple', 'tomato', 'banana', 'vegetable'];
-// Stackerzyklus je Hub: Einfahrt mit Positioniergeschwindigkeit → Plattform absenken.
-// STK_IN_V ist kalibriert, damit sich ohne Wartezeiten ca. 2400 Behälter/h (mit Vorstapelung)
-// bzw. 1200 Behälter/h (ohne) für 2 Stacker + 1 Palettierer ergeben.
-const STK_IN_V = { pre: 0.30, single: 0.225 }; // Einfahrt in den Stacker (m/s)
-const STK_DOWN_V = 0.1;                        // Plattform absenken je Hub (m/s)
+const STK_DOWN_V = 0.15;       // Stacker: Plattform absenken je Hub (m/s); Einfahrt mit Fördergeschwindigkeit
 const TOWER_DOWN_V = 0.2;      // fertiger Turm: Absenken auf Palettierebene in m/s
 const TOWER_V = 0.3;           // fertiger Turm: Abfuhr zum Palettierer in m/s
 const IN_F = 0.5;              // Zuführung, Turmwechsel und Palettierer schneller → Engpass ist bei beiden Maschinen der Stackerhub
@@ -690,21 +686,21 @@ function startProcess(m, maxH, seed) {
       yield () => ln.det.ready;
       const unit = ln.det.occ, { tray, crate } = unit.userData;
       hooks.pulse(2); hooks.status(key, 'Behälter greifen + anheben');
-      yield clampTo(cu, true, fin(0.35));
+      yield clampTo(cu, true, 0.35);
       dynamic.attach(crate); dynamic.attach(tray); unit.removeFromParent();
       const lift = 0.14;
-      sim.move(crate, { y: crate.position.y + lift }, fin(0.7));
-      yield sim.move(cu.group, { y: cu.group.position.y + lift }, fin(0.7));
+      sim.move(crate, { y: crate.position.y + lift }, 0.7);
+      yield sim.move(cu.group, { y: cu.group.position.y + lift }, 0.7);
       hooks.status(key, 'Tray fährt zum Outfeed');
       yield () => ln.out.occ === null;
       ln.out.occ = tray;
-      yield sim.move(tray, { z: Z_OUT }, fin(dur(Z_DET - Z_OUT)), linear);
+      yield sim.move(tray, { z: Z_OUT }, dur(Z_DET - Z_OUT), linear);
       sim.spawn(trayOut(i, tray));
       hooks.status(key, 'Behälter auf Förderer absetzen');
-      sim.move(crate, { y: CONV_Y }, fin(0.8));
-      yield sim.move(cu.group, { y: CONV_Y }, fin(0.8));
-      yield clampTo(cu, false, fin(0.3));
-      sim.move(cu.group, { y: CONV_Y + TRAY_H }, fin(0.4));
+      sim.move(crate, { y: CONV_Y }, 0.8);
+      yield sim.move(cu.group, { y: CONV_Y }, 0.8);
+      yield clampTo(cu, false, 0.3);
+      sim.move(cu.group, { y: CONV_Y + TRAY_H }, 0.4);
       ln.det.occ = crate;
       sim.spawn(crateRun(i, crate));
       hooks.status(key, 'Behälter fährt ab');
@@ -721,11 +717,11 @@ function startProcess(m, maxH, seed) {
     hooks.pulse(3); hooks.status(key, `Tray abschieben ${dir < 0 ? '←' : '→'}`);
     const off = TRAY_W / 2 + 0.015;
     const contact = ln.x - dir * off, end = target - dir * off;
-    yield sim.move(pu, { x: contact }, fin(0.3));
+    yield sim.move(pu, { x: contact }, 0.3);
     const t = Math.max(0.9, Math.abs(end - contact) / 0.8);
-    sim.move(tray, { x: target }, fin(t));
-    yield sim.move(pu, { x: end }, fin(t));
-    yield sim.move(pu, { x: pu.userData.park }, fin(Math.max(0.6, Math.abs(end - contact) / 1.4)));
+    sim.move(tray, { x: target }, t);
+    yield sim.move(pu, { x: end }, t);
+    yield sim.move(pu, { x: pu.userData.park }, Math.max(0.6, Math.abs(end - contact) / 1.4));
     ln.out.occ = null; hooks.count('Trays abgeführt'); hooks.status(key, 'frei');
     if (i === 0 || i === 3) {
       yield sim.move(tray, { x: target + dir * 0.85 }, fin(1.6), linear);
@@ -806,7 +802,7 @@ function startProcess(m, maxH, seed) {
     st.accepting = false;
     hooks.pulse(6); hooks.status(key, `${unitName} fährt in Stacker`); hooks.status(st.key, `${unitName} fährt ein`);
     source.ready = false;
-    yield* moveFromSlot(unit, source, Z_STK, nextOcc, STK_IN_V[m.pre ? 'pre' : 'single']);
+    yield* moveFromSlot(unit, source, Z_STK, nextOcc);
     st.arrived = unit;
   }
 
@@ -1124,7 +1120,7 @@ function prepareContent(id, root) {
   contentTemplates[id + '_half'] = build(3, 3, CRATE_W, HALF_L, 0);
 }
 function boot() { restart(); requestAnimationFrame(loop); }
-window.__vs = { ui, machines, get sim() { return sim; }, dynamic, camera, controls, step: (s) => sim.step(s), setTakt: (t) => { TAKT = t; }, restart, STK_IN_V };
+window.__vs = { ui, machines, get sim() { return sim; }, dynamic, camera, controls, step: (s) => sim.step(s), setTakt: (t) => { TAKT = t; }, restart };
 const parseB64 = (b64) => new Promise((res, rej) => {
   if (!b64) return rej(new Error('kein GLB'));
   const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
