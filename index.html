@@ -151,7 +151,13 @@ const ARTICLES = [
 const HALF_L = 0.3; // Halbgebinde: 400 (quer, X) × 300 (längs, Z)
 const STACK_SHARE = 0.2; // Anteil der TEs, die als 2er-Stapel vom Lager kommen (nur Gebinde mit „double“)
 const CONTENT_IDS = ['apple', 'tomato', 'banana', 'vegetable'];
-const OFFER_SYSTEM_RATE = { pre: 2441, single: 1327 }; // Behälter/h für 2 Stacker + 1 Palettierer, Angebot Kap. 7.3 bei 85%
+// Stackerzyklus je Hub: Einfahrt mit Positioniergeschwindigkeit → Plattform absenken.
+// STK_IN_V ist kalibriert, damit sich ohne Wartezeiten ca. 2400 Behälter/h (mit Vorstapelung)
+// bzw. 1200 Behälter/h (ohne) für 2 Stacker + 1 Palettierer ergeben.
+const STK_IN_V = { pre: 0.30, single: 0.225 }; // Einfahrt in den Stacker (m/s)
+const STK_DOWN_V = 0.1;                        // Plattform absenken je Hub (m/s)
+const TOWER_DOWN_V = 0.2;      // fertiger Turm: Absenken auf Palettierebene in m/s
+const TOWER_V = 0.3;           // fertiger Turm: Abfuhr zum Palettierer in m/s
 const IN_F = 0.5;              // Zuführung, Turmwechsel und Palettierer schneller → Engpass ist bei beiden Maschinen der Stackerhub
 const fin = (d) => d * IN_F;
 let TAKT = 1;                  // Keine zusätzliche Verlangsamung gegenüber der Angebots-Zykluszeit
@@ -583,7 +589,7 @@ function startProcess(m, maxH, seed) {
   const Slot = (z) => ({ z, occ: null, ready: false });
   const lanes = LANE_X.map((x) => ({ x, inSlots: Z_IN.map(Slot), det: Slot(Z_DET), out: Slot(Z_OUT), q: Z_Q.map(Slot), ps: Slot(Z_PS), pre: Slot(Z_PRE) }));
   const center = { busy: false };
-  const stackers = [0, 1].map((s) => ({ x: LANE_X[s === 0 ? 1 : 2], accepting: true, arrived: null, nextHubAt: null }));
+  const stackers = [0, 1].map((s) => ({ x: LANE_X[s === 0 ? 1 : 2], accepting: true, arrived: null, key: `Stacker ${s === 0 ? "links" : "rechts"}` }));
   const palLanes = [0, 1].map(() => ({ towers: [], reserved: 0 }));
   const pal = { pushing: false };
   const palStation = { pallet: null, ready: false }, palWait = { pallet: null };
@@ -630,13 +636,13 @@ function startProcess(m, maxH, seed) {
     return sim.animate(d, (p) => { const v = from + (to - from) * smooth(p); cu.right.position.x = v; cu.left.position.x = -v; });
   }
   const travelLength = (obj) => obj.userData?.tray ? TRAY_L : obj.userData?.halfPair ? CRATE_L : obj.userData?.art?.half ? HALF_L : CRATE_L;
-  function* moveFromSlot(obj, held, z, nextOcc = null) {
+  function* moveFromSlot(obj, held, z, nextOcc = null, v = null) {
     const from = obj.position.clone(), to = from.clone();
     to.z = z;
     const distance = Math.abs(z - from.z), clearDistance = Math.min(travelLength(obj) + SLOT_CLEARANCE, distance);
     let released = !held;
     if (held) held.ready = false;
-    yield sim.animate(dur(distance), (p) => {
+    yield sim.animate(v ? distance / v : dur(distance), (p) => {
       const progress = linear(p);
       obj.position.lerpVectors(from, to, progress);
       if (!released && distance * progress >= clearDistance) {
@@ -797,16 +803,10 @@ function startProcess(m, maxH, seed) {
   function* sendToStacker(st, unit, source, key, unitName, nextOcc = null) {
     hooks.status(key, `${unitName} wartet auf Stacker`);
     yield () => st.accepting;
-    const transitTime = dur(Math.abs(unit.position.z - Z_STK));
-    const departAt = st.nextHubAt === null ? sim.t : st.nextHubAt - transitTime;
-    if (departAt > sim.t) {
-      hooks.status(key, `${unitName} wartet auf Stacker-Takt`);
-      yield departAt - sim.t;
-    }
     st.accepting = false;
-    hooks.pulse(6); hooks.status(key, `${unitName} fährt in Stacker`);
+    hooks.pulse(6); hooks.status(key, `${unitName} fährt in Stacker`); hooks.status(st.key, `${unitName} fährt ein`);
     source.ready = false;
-    yield* moveFromSlot(unit, source, Z_STK, nextOcc);
+    yield* moveFromSlot(unit, source, Z_STK, nextOcc, STK_IN_V[m.pre ? 'pre' : 'single']);
     st.arrived = unit;
   }
 
@@ -871,8 +871,6 @@ function startProcess(m, maxH, seed) {
       hooks.status(key, n ? `Turm (${n}) abgesenkt – wartet auf ${uName}` : `Plattform oben – wartet auf ${uName}`);
       yield () => st.arrived !== null;
       const u = st.arrived; st.arrived = null;
-      const unitN = u.children.reduce((k, c) => k + c.userData.n, 0);
-      st.nextHubAt = sim.t + unitN * 3600 / (OFFER_SYSTEM_RATE[m.pre ? 'pre' : 'single'] / 2);
       hooks.pulse(7); hooks.count('Stackerhübe');
       if (!tower) { tower = new THREE.Group(); tower.position.set(st.x, plat.position.y, Z_STK); dynamic.add(tower); topLevel = Infinity; }
       const cs = [...u.children].sort((a, b) => a.position.y - b.position.y);
@@ -887,7 +885,7 @@ function startProcess(m, maxH, seed) {
       const nCr = () => tower.children.reduce((k, c) => k + c.userData.n, 0);
       if (!last) {
         hooks.status(key, `Plattform senkt um ${uName} ab (${nCr()} Behälter)`);
-        const y = plat.position.y - unitH, t = 0.6 + unitH * 1.2;
+        const y = plat.position.y - unitH, t = Math.max(1, unitH / STK_DOWN_V);
         sim.move(tower, { y }, t);
         yield sim.move(plat, { y }, t);
         st.accepting = true;
@@ -897,7 +895,7 @@ function startProcess(m, maxH, seed) {
         { const l = m.hist[m.hist.length - 1]; m.hist.push([sim.t, l[1] + n, l[2] + tower.children.reduce((k, c) => k + (c.userData.halfPair ? 2 : 1), 0)]); } // Leistung (Ø) über fertige Türme
         hooks.log(`Turm ${side(s)}: ${n} Beh. (${tes.length} TE), ${Math.round(towerH(tes) * 1000 + PALLET_H * 1000)} mm inkl. Palette`);
         hooks.status(key, 'Turm auf Palettierebene absenken');
-        const t = fin(Math.max(1, (plat.position.y - Y_PAL) / 0.5));
+        const t = Math.max(2, (plat.position.y - Y_PAL) / TOWER_DOWN_V);
         sim.move(tower, { y: Y_PAL }, t);
         yield sim.move(plat, { y: Y_PAL }, t);
         const pl = palLanes[s];
@@ -910,7 +908,7 @@ function startProcess(m, maxH, seed) {
         hooks.pulse(8); hooks.status(key, 'Turm fährt in Palettierer');
         const tw = tower; tower = null;
         sim.spawn(towerRun(s, tw, idx));
-        yield fin(dur(0.8)); // Turm hat Plattform verlassen
+        yield 0.8 / TOWER_V; // Turm hat Plattform verlassen
         hooks.status(key, 'Plattform fährt hoch');
         yield sim.move(plat, { y: CONV_Y }, fin(Math.max(1, (CONV_Y - Y_PAL) / 0.6)));
         st.accepting = true;
@@ -919,7 +917,7 @@ function startProcess(m, maxH, seed) {
   }
   function* towerRun(s, tower, idx) {
     const z = Z_SLOTS[idx];
-    yield sim.move(tower, { z }, fin(dur(tower.position.z - z)), linear);
+    yield sim.move(tower, { z }, Math.abs(tower.position.z - z) / TOWER_V, linear);
     palLanes[s].towers.push(tower);
   }
 
@@ -1126,7 +1124,7 @@ function prepareContent(id, root) {
   contentTemplates[id + '_half'] = build(3, 3, CRATE_W, HALF_L, 0);
 }
 function boot() { restart(); requestAnimationFrame(loop); }
-window.__vs = { ui, machines, get sim() { return sim; }, dynamic, camera, controls, step: (s) => sim.step(s), setTakt: (t) => { TAKT = t; }, restart };
+window.__vs = { ui, machines, get sim() { return sim; }, dynamic, camera, controls, step: (s) => sim.step(s), setTakt: (t) => { TAKT = t; }, restart, STK_IN_V };
 const parseB64 = (b64) => new Promise((res, rej) => {
   if (!b64) return rej(new Error('kein GLB'));
   const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
