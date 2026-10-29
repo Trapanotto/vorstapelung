@@ -52,7 +52,7 @@
 <div id="app"></div>
 <div id="panel">
   <h1>Vorstapelung &amp; Palettierung</h1>
-  <div style="color:#52606d;margin:-4px 0 6px">Links: <b style="color:#d9700f">MIT Vorstapelung</b> · rechts: <b style="color:#5b6b7c">OHNE Vorstapelung</b> – identische Zufuhr und Taktzeiten</div>
+  <div style="color:#52606d;margin:-4px 0 6px">Links: <b style="color:#d9700f">MIT Vorstapelung</b> · rechts: <b style="color:#5b6b7c">OHNE Vorstapelung</b> – gleicher Behältermix, 4 bzw. 2 Einfahrten</div>
   <div class="row">
     <button id="play">⏸ Pause</button>
     <button id="reset">↺ Neustart</button>
@@ -75,7 +75,7 @@
     <div class="row"><span class="camlbl" style="color:#5b6b7c">OHNE</span>
       <button data-cam="overview" data-m="1">Übersicht</button>
       <button data-cam="detray" data-m="1">Detraying</button>
-      <button data-cam="prestack" data-m="1">Querübergabe</button>
+      <button data-cam="prestack" data-m="1">Zuführung</button>
       <button data-cam="stacker" data-m="1">Stacker</button>
       <button data-cam="pallet" data-m="1">Palettierer</button>
     </div>
@@ -102,7 +102,7 @@
     <li data-step="8">Fertiger Turm wird auf Palettierebene abgesenkt und in den Palettierer gefahren (2 je Seite)</li>
     <li data-step="9">Alle 4 Türme bereit: Zusammenschieben und auf Leerpalette schieben, Abtransport</li>
   </ol>
-  <div class="note"><b>Ohne Vorstapelung:</b> keine Vorstapler – Behälter 1 (4) wird einzeln quer auf Spur 2 (3) übergeben. Der Stacker senkt pro Behälter ab – doppelt so viele Hübe pro Turm. Gleiche Zufuhr, Taktzeiten und Regeln.</div>
+  <div class="note"><b>Ohne Vorstapelung:</b> zwei Einfahrten führen die Behälter direkt je einem Stacker zu; es gibt weder Vorstapler noch Querübergabe. Der Stacker senkt pro Einzelbehälter ab und benötigt dadurch mehr Hübe pro Turm.</div>
   <div class="note" style="margin-top:6px">Die Anlagen laufen beim Start/Neustart 20 min unsichtbar ein; die Leistung ist der gleitende Mittelwert der letzten 10 min.</div>
   <h2>Vergleich</h2>
   <div class="cmp" id="stats"></div>
@@ -139,12 +139,13 @@ const TRAY_H = 0.06, TRAY_W = 0.46, TRAY_L = 0.66;
 const CRATE_W = 0.4, CRATE_L = 0.6, CRATE_MAX_H = 0.279;
 // Artikel / Gebinde (Auszug Gebindekatalog palettier-lab, Maße in m) – Stapelniveau 3 = unten … 1 = oben (Regel R3)
 // half: Halbgebinde 400×300 (R2: immer typgleich paarweise nebeneinander in einer Lage); double: darf vorgestapelt vom Lager kommen
+// h = physische Höhe; sh = Stapelabstand. Gleiche Werte verhindern, dass sich Gebinde beim Stapeln überlagern.
 const ARTICLES = [
-  { id: 'BAN', name: 'Bananen', crate: 'Migros C', h: 0.279, sh: 0.266, level: 3, content: 'banana', color: '#d8bb64', weight: 2, half: false, double: false },
-  { id: 'APL', name: 'Äpfel Gala', crate: 'IFCO 6413', h: 0.160, sh: 0.150, level: 2, content: 'apple', color: '#94b85d', weight: 4, half: false, double: true },
-  { id: 'TOM', name: 'Tomaten Rispe', crate: 'IFCO 6410', h: 0.125, sh: 0.115, level: 2, content: 'tomato', color: '#da816d', weight: 3, half: false, double: true },
-  { id: 'VEG', name: 'Gemüse Mix', crate: 'Migros A', h: 0.146, sh: 0.133, level: 1, content: 'vegetable', color: '#6eb5ba', weight: 3, half: true, double: true },
-  { id: 'CHT', name: 'Cherrytomaten', crate: 'IFCO 4310', h: 0.125, sh: 0.115, level: 1, content: 'tomato', color: '#c9705f', weight: 2, half: true, double: true },
+  { id: 'BAN', name: 'Bananen', crate: 'Migros C', h: 0.279, sh: 0.279, level: 3, content: 'banana', color: '#d8bb64', weight: 2, half: false, double: false },
+  { id: 'APL', name: 'Äpfel Gala', crate: 'IFCO 6413', h: 0.160, sh: 0.160, level: 2, content: 'apple', color: '#94b85d', weight: 4, half: false, double: true },
+  { id: 'TOM', name: 'Tomaten Rispe', crate: 'IFCO 6410', h: 0.125, sh: 0.125, level: 2, content: 'tomato', color: '#da816d', weight: 3, half: false, double: true },
+  { id: 'VEG', name: 'Gemüse Mix', crate: 'Migros A', h: 0.146, sh: 0.146, level: 1, content: 'vegetable', color: '#6eb5ba', weight: 3, half: true, double: true },
+  { id: 'CHT', name: 'Cherrytomaten', crate: 'IFCO 4310', h: 0.125, sh: 0.125, level: 1, content: 'tomato', color: '#c9705f', weight: 2, half: true, double: true },
 ];
 const HALF_L = 0.3; // Halbgebinde: 400 (quer, X) × 300 (längs, Z)
 const STACK_SHARE = 0.2; // Anteil der TEs, die als 2er-Stapel vom Lager kommen (nur Gebinde mit „double“)
@@ -627,13 +628,28 @@ function startProcess(m, maxH, seed) {
     const from = cu.right.position.x, to = close ? cu.closed : cu.open;
     return sim.animate(d, (p) => { const v = from + (to - from) * smooth(p); cu.right.position.x = v; cu.left.position.x = -v; });
   }
-  /** Staufördern: Slot für Slot vorrücken; der verlassene Slot wird beim Losfahren frei. */
+  const travelLength = (obj) => obj.userData?.tray ? TRAY_L : obj.userData?.halfPair ? CRATE_L : obj.userData?.art?.half ? HALF_L : CRATE_L;
+  function* moveFromSlot(obj, held, z, nextOcc = null) {
+    const from = obj.position.clone(), to = from.clone();
+    to.z = z;
+    const distance = Math.abs(z - from.z), clearDistance = Math.min(travelLength(obj), distance);
+    let released = !held;
+    if (held) held.ready = false;
+    yield sim.animate(dur(distance), (p) => {
+      const progress = linear(p);
+      obj.position.lerpVectors(from, to, progress);
+      if (!released && distance * progress >= clearDistance) {
+        held.occ = nextOcc; held.ready = false; released = true;
+      }
+    });
+    if (held && !released) { held.occ = nextOcc; held.ready = false; }
+  }
+  /** Staufördern: den Quellslot erst freigeben, wenn das Gebinde ihn physisch verlassen hat. */
   function* travel(obj, slots, held) {
     for (const s of slots) {
       yield () => s.occ === null;
       s.occ = obj; s.ready = false;
-      if (held) { held.occ = null; held.ready = false; }
-      yield sim.move(obj, { z: s.z }, dur(obj.position.z - s.z), linear);
+      yield* moveFromSlot(obj, held, s.z);
       s.ready = true; held = s;
     }
   }
@@ -719,24 +735,30 @@ function startProcess(m, maxH, seed) {
   //    Halbgebinde (400×300): das erste rückt im Puffer nach vorn, das zweite schliesst auf → gemeinsame 600×400-Lage (R2)
   function* crateRun(i, crate) {
     hooks.pulse(4);
-    const ln = lanes[i], rest = m.pre ? [ln.ps] : [ln.ps, ln.pre], qz = ln.q[0];
+    const ln = lanes[i], laneNo = m.pre ? i + 1 : i, pairStatus = `Halbgebinde Spur ${laneNo}`;
+    const rest = m.pre ? [ln.ps] : [ln.ps, ln.pre], qz = ln.q[0], pairSlot = m.pre ? qz : ln.pre;
     if (!crate.userData.art.half) { yield* travel(crate, [ln.out, ...ln.q, ...rest], ln.det); return; }
     if (crate.userData.part === 0) {
-      yield* travel(crate, [ln.out, qz], ln.det);
-      yield sim.move(crate, { z: qz.z - HALF_L / 2 }, dur(HALF_L / 2), linear);
-      qz.ready = false; ln.halfWait = crate;
+      const waitSlots = m.pre ? [ln.out, qz] : [ln.out, ...ln.q, ln.ps, ln.pre];
+      yield* travel(crate, waitSlots, ln.det);
+      pairSlot.ready = false;
+      yield sim.move(crate, { z: pairSlot.z - HALF_L / 2 }, dur(HALF_L / 2), linear);
+      pairSlot.ready = false; ln.halfWait = crate;
+      hooks.status(pairStatus, `${crate.userData.art.name} wartet auf typgleiches Halbgebinde`);
       return;
     }
     yield* travel(crate, [ln.out], ln.det);
+    hooks.status(pairStatus, `${crate.userData.art.name} wartet auf erstes Halbgebinde`);
     yield () => ln.halfWait;
     const first = ln.halfWait; ln.halfWait = null;
-    yield sim.move(crate, { z: qz.z + HALF_L / 2 }, dur(crate.position.z - qz.z - HALF_L / 2), linear);
+    yield sim.move(crate, { z: pairSlot.z + HALF_L / 2 }, dur(crate.position.z - pairSlot.z - HALF_L / 2), linear);
     ln.out.occ = null; ln.out.ready = false;
-    const g = new THREE.Group(); g.position.set(ln.x, CONV_Y, qz.z); dynamic.add(g);
+    const g = new THREE.Group(); g.position.set(ln.x, CONV_Y, pairSlot.z); dynamic.add(g);
     g.attach(first); g.attach(crate);
     Object.assign(g.userData, first.userData, { n: first.userData.n * 2, halfPair: true });
-    qz.occ = g; qz.ready = true;
-    yield* travel(g, rest, qz);
+    pairSlot.occ = g; pairSlot.ready = true;
+    hooks.status(pairStatus, `${crate.userData.art.name}: Halbgebinde-Paar gebildet`);
+    if (m.pre) yield* travel(g, rest, pairSlot);
   }
 
   // 5) Vorstapler 1–4 (je Spur): Behälter anheben, nächster Behälter derselben Spur fährt darunter, absetzen → Paar
@@ -781,15 +803,17 @@ function startProcess(m, maxH, seed) {
       for (;;) {
         hooks.status(key, `wartet auf ${uName} von Einfahrt ${s + 1}`);
         yield () => ln.pre.ready;
-        const crate = ln.pre.occ; ln.pre.occ = null; ln.pre.ready = false;
+        const crate = ln.pre.occ;
         if ((crate.userData.seq ?? -1) !== next) console.warn('Sequenzfehler', m.tag, s, crate.userData.seq, next);
         const unit = new THREE.Group(); unit.position.set(ln.x, CONV_Y, Z_PRE); dynamic.add(unit); unit.attach(crate);
+        ln.pre.occ = unit;
         hooks.status(key, `${uName} wartet auf Stacker`);
         yield () => st.accepting;
         st.accepting = false;
         hooks.pulse(6); hooks.status(key, `${uName} fährt in Stacker`);
+        ln.pre.ready = false;
         next++;
-        yield sim.move(unit, { z: Z_STK }, dur(Z_PRE - Z_STK), linear);
+        yield* moveFromSlot(unit, ln.pre, Z_STK);
         st.arrived = unit;
       }
     }
@@ -824,9 +848,9 @@ function startProcess(m, maxH, seed) {
       yield () => st.accepting;
       st.accepting = false;
       hooks.pulse(6); hooks.status(key, `${uName} fährt in Stacker`);
-      lt.pre.occ = fromBot ? null : RES; lt.pre.ready = false; // nächste Einheit kommt von der jeweils anderen Spur
+      lt.pre.ready = false;
       next++;
-      yield sim.move(unit, { z: Z_STK }, dur(Z_PRE - Z_STK), linear);
+      yield* moveFromSlot(unit, lt.pre, Z_STK, fromBot ? null : RES); // nächste Einheit kommt von der jeweils anderen Spur
       st.arrived = unit;
     }
   }
