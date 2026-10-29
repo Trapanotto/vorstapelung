@@ -38,6 +38,9 @@
   .status span:last-child { text-align: right; }
   #log { font-family: Consolas, monospace; font-size: 11.5px; color: #3e4c59; white-space: pre-wrap; }
   .legend { display: flex; gap: 8px; flex-wrap: wrap; }
+  .camlbl { width: 42px; font-weight: 700; font-size: 12px; }
+  #cams .row { margin: 3px 0; gap: 4px; }
+  #cams button { padding: 3px 6px; font-size: 12px; }
   .legend i { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -2px; margin-right: 3px; }
   .lbl { font: 600 12px "Segoe UI", sans-serif; color: #fff; background: rgba(224,112,20,.92); padding: 2px 7px; border-radius: 4px; white-space: nowrap; pointer-events: none; }
   .lbl.num { background: rgba(31,41,51,.85); font-size: 15px; padding: 1px 8px; }
@@ -55,45 +58,52 @@
     <button id="reset">↺ Neustart</button>
     <button id="labels" class="on">Beschriftung</button>
   </div>
-  <div class="row"><span>Tempo</span><input type="range" id="speed" min="0.25" max="8" step="0.25" value="1.5" /><span id="speedv">1.5×</span></div>
-  <div class="row"><span>Turmhöhe</span>
-    <select id="pairs">
-      <option value="2">2 Paare = 4 Behälter</option>
-      <option value="3" selected>3 Paare = 6 Behälter</option>
-    </select>
+  <div class="row"><span>Tempo</span><input type="range" id="speed" min="0.25" max="8" step="0.25" value="4" /><span id="speedv">4×</span></div>
+  <h2>Kamera</h2>
+  <div id="cams">
+    <div class="row"><span class="camlbl">Beide</span>
+      <button data-cam="compare" class="on">Vergleich</button>
+      <button data-cam="top">Draufsicht</button>
+    </div>
+    <div class="row"><span class="camlbl" style="color:#d9700f">MIT</span>
+      <button data-cam="overview" data-m="0">Übersicht</button>
+      <button data-cam="detray" data-m="0">Detraying</button>
+      <button data-cam="prestack" data-m="0">Vorstapler</button>
+      <button data-cam="stacker" data-m="0">Stacker</button>
+      <button data-cam="pallet" data-m="0">Palettierer</button>
+    </div>
+    <div class="row"><span class="camlbl" style="color:#5b6b7c">OHNE</span>
+      <button data-cam="overview" data-m="1">Übersicht</button>
+      <button data-cam="detray" data-m="1">Detraying</button>
+      <button data-cam="prestack" data-m="1">Querübergabe</button>
+      <button data-cam="stacker" data-m="1">Stacker</button>
+      <button data-cam="pallet" data-m="1">Palettierer</button>
+    </div>
   </div>
-  <div class="row"><span>Kamera für</span>
-    <select id="camm">
-      <option value="0" selected>Maschine MIT Vorstapelung</option>
-      <option value="1">Maschine OHNE Vorstapelung</option>
-    </select>
-  </div>
-  <div class="row" id="cams">
-    <button data-cam="compare" class="on">Vergleich</button>
-    <button data-cam="overview">Übersicht</button>
-    <button data-cam="detray">Detraying</button>
-    <button data-cam="prestack">Pre-Stacker</button>
-    <button data-cam="stacker">Stacker</button>
-    <button data-cam="pallet">Palettierer</button>
-    <button data-cam="top">Draufsicht</button>
-  </div>
-  <div class="legend">
-    <span><i style="background:#2f6fd6"></i>Spur 1</span><span><i style="background:#2f9e5a"></i>Spur 2</span>
-    <span><i style="background:#e08a1e"></i>Spur 3</span><span><i style="background:#c8463c"></i>Spur 4</span>
+  <h2>Artikel</h2>
+  <div class="legend" id="arts"></div>
+  <h2>Palettenbildungsregeln</h2>
+  <div class="note">
+    <b>R2 Halbgebinde:</b> 400×300 nur typgleich paarweise nebeneinander in einer Lage (je Tray nur 1 Halbgebinde bzw. 1 Halbgebinde-Stapel; zwei typgleiche schliessen nach dem Detraying im Puffer zu einer 600×400-Lage auf).<br>
+    <b>R3 Stapelniveau:</b> Niveau 3 (gross/stabil) unten → Niveau 1 (klein) oben, innerhalb gleichen Niveaus höhere Gebinde unten.<br>
+    <b>R5 Maximalhöhe:</b> Turm ≤ 1850 mm inkl. Palette (144 mm).<br>
+    <b>Stapelfaktor:</b> stapelbare Gebinde (doubleAllowed) kommen einzeln (Faktor 1) oder als 2er-Stapel (Faktor 2) vom Lager – 20 % der stapelbaren TEs sind gestapelt; Bananen (Migros C) immer einzeln.<br>
+    <b>Sequenzierung:</b> TEs werden vorgelagert in Turmreihenfolge auf die Spuren verteilt (oberste TE zuerst), Vorstapler und Stacker bauen den Turm so regelkonform auf.
   </div>
   <h2>Funktionsablauf</h2>
   <ol id="steps">
-    <li data-step="1">Infeed: Behälter auf Tray fahren auf 4 Spuren zu</li>
+    <li data-step="1">Infeed: TEs vom Lager (einzeln oder 2er-Stapel, je Tray nur 1 Grundfläche) auf Tray, in Turmreihenfolge sequenziert, fahren auf 4 Spuren zu</li>
     <li data-step="2">Detraying: Behälter wird gegriffen und angehoben, Tray fährt weiter zum Outfeed</li>
     <li data-step="3">Outfeed: Tray wird seitlich abgeschoben (1 ←, 2 →, 3 ←, 4 →)</li>
-    <li data-step="4">Nur noch der Behälter fährt auf der Spur zum Pre-Stacker 1–4</li>
-    <li data-step="5">Pre-Stacker 1–4: Behälter wird angehoben, nächster Behälter derselben Spur fährt darunter → Paar</li>
-    <li data-step="6">Querübergabe: Paar 1 (4) wird auf Spur 2 (3) geschoben, abwechselnd in den Stacker</li>
-    <li data-step="7">Stacker: Paar fährt auf Hubplattform, Plattform senkt ab, nächstes Paar wird oben aufgesetzt</li>
+    <li data-step="4">Nur noch der Behälter fährt auf der Spur zum Vorstapler 1–4</li>
+    <li data-step="5">Vorstapler 1–4: Behälter wird angehoben, nächster (grösserer) Behälter derselben Spur fährt darunter → Paar</li>
+    <li data-step="6">Querübergabe: Paar 1 (4) wird auf Spur 2 (3) geschoben, Paare laufen in Turmsequenz in den Stacker</li>
+    <li data-step="7">Stacker: Paar fährt auf Hubplattform, Plattform senkt ab, nächstes (kleineres) Paar wird oben aufgesetzt</li>
     <li data-step="8">Fertiger Turm wird auf Palettierebene abgesenkt und in den Palettierer gefahren (2 je Seite)</li>
     <li data-step="9">Alle 4 Türme bereit: Zusammenschieben und auf Leerpalette schieben, Abtransport</li>
   </ol>
-  <div class="note"><b>Ohne Vorstapelung:</b> keine Pre-Stacker – Behälter 1 (4) wird einzeln quer auf Spur 2 (3) übergeben. Der Stacker senkt pro Behälter ab – doppelt so viele Hübe pro Turm.</div>
+  <div class="note"><b>Ohne Vorstapelung:</b> keine Vorstapler – Behälter 1 (4) wird einzeln quer auf Spur 2 (3) übergeben. Der Stacker senkt pro Behälter ab – doppelt so viele Hübe pro Turm. Gleiche Zufuhr, Taktzeiten und Regeln.</div>
+  <div class="note" style="margin-top:6px">Die Anlagen laufen beim Start/Neustart 20 min unsichtbar ein; die Leistung ist der gleitende Mittelwert der letzten 10 min.</div>
   <h2>Vergleich</h2>
   <div class="cmp" id="stats"></div>
   <h2>Stationen – mit Vorstapelung</h2>
@@ -106,6 +116,7 @@
 <div id="hint">Maus: drehen · Rechtsklick: verschieben · Rad: zoomen</div>
 
 <script src="./crate-glb.js"></script>
+<script src="./content-glb.js"></script>
 <script type="importmap">
 { "imports": {
   "three": "https://unpkg.com/three@0.170.0/build/three.module.js",
@@ -116,14 +127,31 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { SimplifyModifier } from 'three/addons/modifiers/SimplifyModifier.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 // ======================= Layout (Meter, Y oben, Fluss Richtung -Z) =======================
-const CONV_Y = 1.75;            // Oberkante Fördertechnik (hochgelegt – Stacker senkt nach unten ab)
+const CONV_Y = 2.0;             // Oberkante Fördertechnik (hochgelegt – Stacker senkt nach unten ab)
 const DY = CONV_Y - 0.78;       // Höhenversatz gegenüber Standard-Förderhöhe
-const Y_PAL = 0.42;             // Palettierebene (Oberkante Palette / Palettiertisch)
+const Y_PAL = 0.35;             // Palettierebene (Oberkante Palette / Palettiertisch)
 const TRAY_H = 0.06, TRAY_W = 0.46, TRAY_L = 0.66;
-const CRATE_H = 0.25, CRATE_W = 0.4, CRATE_L = 0.6, PITCH = 0.24; // Stapelmaß 240 mm
+const CRATE_W = 0.4, CRATE_L = 0.6, CRATE_MAX_H = 0.279;
+// Artikel / Gebinde (Auszug Gebindekatalog palettier-lab, Maße in m) – Stapelniveau 3 = unten … 1 = oben (Regel R3)
+// half: Halbgebinde 400×300 (R2: immer typgleich paarweise nebeneinander in einer Lage); double: darf vorgestapelt vom Lager kommen
+const ARTICLES = [
+  { id: 'BAN', name: 'Bananen', crate: 'Migros C', h: 0.279, sh: 0.266, level: 3, content: 'banana', color: '#d8bb64', weight: 2, half: false, double: false },
+  { id: 'APL', name: 'Äpfel Gala', crate: 'IFCO 6413', h: 0.160, sh: 0.150, level: 2, content: 'apple', color: '#94b85d', weight: 4, half: false, double: true },
+  { id: 'TOM', name: 'Tomaten Rispe', crate: 'IFCO 6410', h: 0.125, sh: 0.115, level: 2, content: 'tomato', color: '#da816d', weight: 3, half: false, double: true },
+  { id: 'VEG', name: 'Gemüse Mix', crate: 'Migros A', h: 0.146, sh: 0.133, level: 1, content: 'vegetable', color: '#6eb5ba', weight: 3, half: true, double: true },
+  { id: 'CHT', name: 'Cherrytomaten', crate: 'IFCO 4310', h: 0.125, sh: 0.115, level: 1, content: 'tomato', color: '#c9705f', weight: 2, half: true, double: true },
+];
+const HALF_L = 0.3; // Halbgebinde: 400 (quer, X) × 300 (längs, Z)
+const STACK_SHARE = 0.2; // Anteil der TEs, die als 2er-Stapel vom Lager kommen (nur Gebinde mit „double“)
+const CONTENT_IDS = ['apple', 'tomato', 'banana', 'vegetable'];
+const IN_F = 0.5;              // Zuführung, Turmwechsel und Palettierer schneller → Engpass ist bei beiden Maschinen der Stackerhub
+const fin = (d) => d * IN_F;
+let TAKT = 1.76;               // Zeitfaktor aller Maschinenbewegungen (beide Maschinen identisch) → MIT ≈ 2400 Behälter/h
 const PALLET_H = 0.144;
 const LANE_X = [-1.9, -0.85, 0.85, 1.9];
 const Z_IN = [8.3, 7.55, 6.8, 6.05, 5.3];
@@ -140,6 +168,7 @@ class Sim {
   constructor() { this.t = 0; this.procs = []; this.anims = []; }
   spawn(gen) { this.procs.push({ g: gen, until: this.t, cond: null }); }
   animate(dur, fn) {
+    dur *= TAKT;
     if (dur <= 0) { fn(1); return 0; }
     this.anims.push({ t0: this.t, dur, fn }); fn(0); return dur;
   }
@@ -241,7 +270,7 @@ const M = {
   chain: new THREE.MeshStandardMaterial({ color: '#30363c', metalness: 0.6, roughness: 0.5 }),
   zone: new THREE.MeshStandardMaterial({ color: '#e8c33a', roughness: 0.8 }),
 };
-const crateMats = LANE_COLORS.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.6, side: THREE.DoubleSide }));
+const crateMats = Object.fromEntries(ARTICLES.map((a) => [a.id, new THREE.MeshStandardMaterial({ color: new THREE.Color(a.color).multiplyScalar(0.72), roughness: 0.6, side: THREE.DoubleSide })]));
 const boxGeoCache = new Map();
 function box(w, h, d, mat, x, y, z, parent = world) {
   const key = `${w}|${h}|${d}`;
@@ -411,7 +440,7 @@ box(0.04, 0.04, 1.24, M.frameDark, -1.16, Y_PAL, Z_PAL);
 const palX1 = X_PAL + 0.7;
 portal(-1.6, palX1, Z_PAL - 0.85, Z_PAL + 0.85, 2.6);
 for (const s of [-1, 1]) beamX(-1.6, palX1, Z_PAL + s * 0.5, 2.45);
-P.palPusher = pusher(-1.28, Z_PAL, { plateH: 1.55, plateL: 1.22, plateY: Y_PAL + 0.02, beamY: 2.45, rodZ: 0.5 });
+P.palPusher = pusher(-1.28, Z_PAL, { plateH: 1.75, plateL: 1.22, plateY: Y_PAL + 0.02, beamY: 2.45, rodZ: 0.5 });
 // Palettenförderer (Kettenförderer)
 {
   const yTop = Y_PAL - PALLET_H, z0 = Z_PAL_IN + 0.8, z1 = Z_PAL_OUT - 0.4;
@@ -433,7 +462,7 @@ LANE_X.forEach((x, i) => {
 label('Infeed Tray + Behälter', -1.4, 0.05, 10.3); label('Infeed Tray + Behälter', 1.4, 0.05, 10.3);
 label('Detraying', -1.4, 2.2 + DY, Z_DET); label('Detraying', 1.4, 2.2 + DY, Z_DET);
 label('Outfeed Tray ←', -3.4, 1.15 + DY, Z_OUT); label('→ Outfeed Tray', 3.4, 1.15 + DY, Z_OUT); label('Outfeed Tray ↓', 0, 1.15 + DY, Z_OUT + 1.2);
-if (pre) { label('Pre-Stacker 1 / 2', -1.4, CONV_Y + 1.75, Z_PS); label('Pre-Stacker 3 / 4', 1.4, CONV_Y + 1.75, Z_PS); }
+if (pre) { label('Vorstapler 1 / 2', -1.4, CONV_Y + 1.75, Z_PS); label('Vorstapler 3 / 4', 1.4, CONV_Y + 1.75, Z_PS); }
 label('Querübergabe', -1.4, CONV_Y + 1.1, Z_PRE - 0.1); label('Querübergabe', 1.4, CONV_Y + 1.1, Z_PRE - 0.1);
 label('Stacker (absenkend)', LANE_X[1], CONV_Y + 1.25, Z_STK); label('Stacker (absenkend)', LANE_X[2], CONV_Y + 1.25, Z_STK);
 label('Palletizer (Palettierebene)', 0.9, 2.85, Z_PAL);
@@ -448,7 +477,8 @@ const machines = [buildMachine(0, true), buildMachine(OX_B, false)];
 const moverHome = movers.map((o) => o.position.clone());
 
 // ---------- Fabriken: Behälter, Tray, Palette ----------
-const crateTemplates = [null, null, null, null];
+const crateTemplates = {};   // je Artikel: GLB-Behälter auf Gebindehöhe skaliert
+const contentTemplates = {}; // je Inhalt: Instanzen (Früchte/Gemüse) in Behälterkoordinaten
 const labelMats = LANE_COLORS.map((c, i) => {
   const cv = document.createElement('canvas'); cv.width = 128; cv.height = 72;
   const g = cv.getContext('2d'); g.fillStyle = '#ffffff'; g.fillRect(0, 0, 128, 72);
@@ -457,24 +487,33 @@ const labelMats = LANE_COLORS.map((c, i) => {
   const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
   return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.7 });
 });
-const labelGeo = new THREE.PlaneGeometry(0.16, 0.09);
-function proceduralCrate(lane) {
-  const g = new THREE.Group(), m = crateMats[lane], t = 0.014;
-  box(CRATE_W, 0.018, CRATE_L, m, 0, 0.009, 0, g);
+const labelGeo = new THREE.PlaneGeometry(0.13, 0.073);
+function proceduralCrate(a) {
+  const g = new THREE.Group(), m = crateMats[a.id], t = 0.014, L = a.half ? HALF_L : CRATE_L;
+  box(CRATE_W, 0.018, L, m, 0, 0.009, 0, g);
   for (const s of [-1, 1]) {
-    box(t, CRATE_H, CRATE_L, m, s * (CRATE_W / 2 - t / 2), CRATE_H / 2, 0, g);
-    box(CRATE_W - 2 * t, CRATE_H, t, m, 0, CRATE_H / 2, s * (CRATE_L / 2 - t / 2), g);
+    box(t, a.h, L, m, s * (CRATE_W / 2 - t / 2), a.h / 2, 0, g);
+    box(CRATE_W - 2 * t, a.h, t, m, 0, a.h / 2, s * (L / 2 - t / 2), g);
   }
   return g;
 }
-function makeCrate(lane) {
+function makeCrate(a, lane, label = true) {
   const g = new THREE.Group();
-  g.add(crateTemplates[lane] ? crateTemplates[lane].clone() : proceduralCrate(lane));
-  for (const s of [-1, 1]) {
+  g.add(crateTemplates[a.id] ? crateTemplates[a.id].clone() : proceduralCrate(a));
+  const c = contentTemplates[a.content + (a.half ? '_half' : '')];
+  if (c) { const k = c.clone(); k.position.y = Math.max(0.014, a.h - 0.087); g.add(k); }
+  if (label) for (const s of [-1, 1]) {
     const l = new THREE.Mesh(labelGeo, labelMats[lane]);
-    l.position.set(s * (CRATE_W / 2 + 0.004), 0.12, 0); l.rotation.y = s * Math.PI / 2; g.add(l);
+    l.position.set(s * (CRATE_W / 2 + 0.004), a.h * 0.5, 0); l.rotation.y = s * Math.PI / 2; g.add(l);
   }
-  g.userData.lane = lane;
+  g.userData.lane = lane; g.userData.art = a;
+  return g;
+}
+/** Transporteinheit ab Lager: `layers` Gebinde übereinander (Halbgebinde: einzeln auf eigenem Tray). */
+function makeTE(a, layers, lane) {
+  const g = new THREE.Group();
+  for (let k = 0; k < layers; k++) { const c = makeCrate(a, lane, k === 0); c.position.set(0, k * a.sh, 0); g.add(c); }
+  Object.assign(g.userData, { te: true, art: a, layers, lane, n: layers, sh: layers * a.sh, h: (layers - 1) * a.sh + a.h });
   return g;
 }
 function makeTray() {
@@ -497,14 +536,14 @@ function makePallet() { // EURO-Palette 1200 (Z) × 800 (X) × 144
 
 // ======================= Prozesslogik =======================
 let sim = new Sim();
-const ui = { steps: {}, log: [] };
+const ui = { steps: {}, log: [], t0: 0 };
 const fmtTime = (t) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 /** deterministischer Zufall: beide Maschinen erhalten exakt dieselbe Zufuhr je Spur */
 function rngFor(seed) {
   let a = seed >>> 0;
   return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
-const STAT_KEYS = ['Behälter eingespeist', 'Stackerhübe', 'Türme fertig', 'Behälter palettiert', 'Paletten abgeführt'];
+const STAT_KEYS = ['TEs eingespeist', 'Behälter eingespeist', 'Stackerhübe', 'Türme fertig', 'Behälter palettiert', 'Paletten abgeführt', 'Regelverstöße R3'];
 function makeHooks(m) {
   return {
     log(t) { ui.log.unshift(`${fmtTime(sim.t)} ${m.tag} ${t}`); ui.log.length = Math.min(ui.log.length, 12); },
@@ -514,9 +553,9 @@ function makeHooks(m) {
   };
 }
 
-function startProcess(m, pairsPerTower, seed) {
+function startProcess(m, maxH, seed) {
   const hooks = makeHooks(m), P = m.P, dynamic = m.dyn;
-  m.stats = Object.fromEntries(STAT_KEYS.map((k) => [k, 0])); m.status = {};
+  m.stats = Object.fromEntries(STAT_KEYS.map((k) => [k, 0])); m.status = {}; m.hist = [[0, 0, 0]];
   const S = SPEED;
   const dur = (d) => Math.max(0.35, Math.abs(d) / S);
   const Slot = (z) => ({ z, occ: null, ready: false });
@@ -528,6 +567,41 @@ function startProcess(m, pairsPerTower, seed) {
   const palStation = { pallet: null, ready: false }, palWait = { pallet: null };
   let crateNo = 0, palletNo = 0;
   const side = (s) => (s === 0 ? 'links' : 'rechts');
+
+  // Palettenbildung: je Stacker werden Türme geplant (max. Palettenhöhe, Stapelniveau 3 unten → 1 oben),
+  // danach als Sequenz auf die beiden zuführenden Spuren verteilt (beide Maschinen erhalten dieselben Türme).
+  const laneQ = [[], [], [], []];
+  const plans = [0, 1].map((s) => ({ rng: rngFor(seed * 31 + s), seq: 0 }));
+  const wSum = ARTICLES.reduce((n, a) => n + a.weight, 0);
+  const pickArticle = (rng) => { let r = rng() * wSum; for (const a of ARTICLES) if ((r -= a.weight) < 0) return a; return ARTICLES[0]; };
+  const byRule = (x, y) => y.a.level - x.a.level || y.a.sh - x.a.sh || x.a.id.localeCompare(y.a.id); // R3: großes Niveau unten; im Niveau höhere Gebinde unten
+  const towerH = (tes) => tes.reduce((n, t, k) => n + t.layers * t.a.sh + (k === tes.length - 1 ? t.a.h - t.a.sh : 0), 0);
+  function planTower(s) {
+    const p = plans[s], limit = maxH / 1000 - PALLET_H, top = s === 0 ? 1 : 2, bot = s === 0 ? 0 : 3;
+    let cs = [];
+    for (let miss = 0; miss < 4;) {
+      const a = pickArticle(p.rng);
+      let ok = false;
+      const stacked = a.double && p.rng() < STACK_SHARE;
+      for (let layers = stacked ? 2 : 1; layers >= 1 && !ok; layers--) { // TE ab Lager; passt sie nicht, kleinere TE
+        const next = [...cs, { a, layers }].sort(byRule);
+        if (towerH(next) <= limit) { cs = next; ok = true; }
+      }
+      if (!ok) miss++;
+    }
+    if (cs.length % 2) cs.pop(); // gerade Anzahl TEs → Paare für die Vorstapelung
+    const per = m.pre ? 2 : 1, n = cs.length / per;
+    for (let k = 0; k < n; k++) {
+      const unit = cs.slice(k * per, k * per + per);        // unten → oben
+      const lane = p.seq % 2 === 0 ? bot : top;
+      const lowerH = unit.length > 1 ? (unit[0].layers - 1) * unit[0].a.sh + unit[0].a.h : 0;
+      for (const t of unit.reverse())                        // Vorstapler: obere TE kommt zuerst
+        for (const part of t.a.half ? [0, 1] : [-1])         // Halbgebinde: zwei typgleiche TEs nacheinander (R2)
+          laneQ[lane].push({ a: t.a, layers: t.layers, seq: p.seq, last: k === n - 1, lowerH, part });
+      p.seq++;
+    }
+  }
+  const nextCrate = (i) => { while (!laneQ[i].length) planTower(i < 2 ? 0 : 1); return laneQ[i].shift(); };
 
   function clampTo(cu, close, d = 0.35) {
     const from = cu.right.position.x, to = close ? cu.closed : cu.open;
@@ -552,15 +626,15 @@ function startProcess(m, pairsPerTower, seed) {
       const s0 = ln.inSlots[0];
       yield () => s0.occ === null;
       const unit = new THREE.Group(); unit.position.set(ln.x, CONV_Y, s0.z);
-      const tray = makeTray(), crate = makeCrate(i);
-      crate.position.y = TRAY_H; crate.userData.no = ++crateNo;
+      const tray = makeTray(), job = nextCrate(i), crate = makeTE(job.a, job.layers, i);
+      crate.position.y = TRAY_H; Object.assign(crate.userData, { no: ++crateNo, seq: job.seq, last: job.last, lowerH: job.lowerH, part: job.part });
       unit.add(tray, crate); unit.userData = { tray, crate };
       unit.scale.setScalar(0.01); dynamic.add(unit);
       sim.animate(0.5, (p) => unit.scale.setScalar(Math.max(0.01, smooth(p))));
       s0.occ = unit; s0.ready = true;
-      hooks.count('Behälter eingespeist'); hooks.pulse(1);
+      hooks.count('Behälter eingespeist', crate.userData.n); hooks.count('TEs eingespeist'); hooks.pulse(1);
       sim.spawn(travel(unit, [...ln.inSlots.slice(1), ln.det], s0));
-      yield 1.0 + rng() * 2.5; // unregelmäßige Zufuhr (für beide Maschinen identisch)
+      yield 0.5 + rng() * 1.2; // unregelmäßige Zufuhr (für beide Maschinen identisch)
     }
   }
 
@@ -572,21 +646,21 @@ function startProcess(m, pairsPerTower, seed) {
       yield () => ln.det.ready;
       const unit = ln.det.occ, { tray, crate } = unit.userData;
       hooks.pulse(2); hooks.status(key, 'Behälter greifen + anheben');
-      yield clampTo(cu, true);
+      yield clampTo(cu, true, fin(0.35));
       dynamic.attach(crate); dynamic.attach(tray); unit.removeFromParent();
       const lift = 0.14;
-      sim.move(crate, { y: crate.position.y + lift }, 0.7);
-      yield sim.move(cu.group, { y: cu.group.position.y + lift }, 0.7);
+      sim.move(crate, { y: crate.position.y + lift }, fin(0.7));
+      yield sim.move(cu.group, { y: cu.group.position.y + lift }, fin(0.7));
       hooks.status(key, 'Tray fährt zum Outfeed');
       yield () => ln.out.occ === null;
       ln.out.occ = tray;
-      yield sim.move(tray, { z: Z_OUT }, dur(Z_DET - Z_OUT), linear);
+      yield sim.move(tray, { z: Z_OUT }, fin(dur(Z_DET - Z_OUT)), linear);
       sim.spawn(trayOut(i, tray));
       hooks.status(key, 'Behälter auf Förderer absetzen');
-      sim.move(crate, { y: CONV_Y }, 0.8);
-      yield sim.move(cu.group, { y: CONV_Y }, 0.8);
-      yield clampTo(cu, false, 0.3);
-      sim.move(cu.group, { y: CONV_Y + TRAY_H }, 0.4);
+      sim.move(crate, { y: CONV_Y }, fin(0.8));
+      yield sim.move(cu.group, { y: CONV_Y }, fin(0.8));
+      yield clampTo(cu, false, fin(0.3));
+      sim.move(cu.group, { y: CONV_Y + TRAY_H }, fin(0.4));
       ln.det.occ = crate;
       sim.spawn(crateRun(i, crate));
       hooks.status(key, 'Behälter fährt ab');
@@ -603,28 +677,45 @@ function startProcess(m, pairsPerTower, seed) {
     hooks.pulse(3); hooks.status(key, `Tray abschieben ${dir < 0 ? '←' : '→'}`);
     const off = TRAY_W / 2 + 0.015;
     const contact = ln.x - dir * off, end = target - dir * off;
-    yield sim.move(pu, { x: contact }, 0.3);
+    yield sim.move(pu, { x: contact }, fin(0.3));
     const t = Math.max(0.9, Math.abs(end - contact) / 0.8);
-    sim.move(tray, { x: target }, t);
-    yield sim.move(pu, { x: end }, t);
-    yield sim.move(pu, { x: pu.userData.park }, Math.max(0.6, Math.abs(end - contact) / 1.4));
+    sim.move(tray, { x: target }, fin(t));
+    yield sim.move(pu, { x: end }, fin(t));
+    yield sim.move(pu, { x: pu.userData.park }, fin(Math.max(0.6, Math.abs(end - contact) / 1.4)));
     ln.out.occ = null; hooks.count('Trays abgeführt'); hooks.status(key, 'frei');
     if (i === 0 || i === 3) {
-      yield sim.move(tray, { x: target + dir * 0.85 }, 1.6, linear);
+      yield sim.move(tray, { x: target + dir * 0.85 }, fin(1.6), linear);
     } else {
-      yield sim.move(tray, { z: Z_OUT + 0.8 }, dur(0.8), linear);
+      yield sim.move(tray, { z: Z_OUT + 0.8 }, fin(dur(0.8)), linear);
       center.busy = false;
-      yield sim.move(tray, { z: 9.3 }, dur(9.3 - Z_OUT - 0.8), linear);
+      yield sim.move(tray, { z: 9.3 }, fin(dur(9.3 - Z_OUT - 0.8)), linear);
     }
     sim.animate(0.4, (p) => tray.scale.setScalar(Math.max(0.01, 1 - p)));
     yield 0.4; tray.removeFromParent();
   }
 
-  // 4) Behälter fährt ohne Tray über Outfeed und Pufferstrecke zum Pre-Stacker
+  // 4) Behälter fährt ohne Tray über Outfeed und Pufferstrecke zum Vorstapler.
+  //    Halbgebinde (400×300): das erste rückt im Puffer nach vorn, das zweite schliesst auf → gemeinsame 600×400-Lage (R2)
   function* crateRun(i, crate) {
     hooks.pulse(4);
-    const ln = lanes[i];
-    yield* travel(crate, m.pre ? [ln.out, ...ln.q, ln.ps] : [ln.out, ...ln.q, ln.ps, ln.pre], ln.det);
+    const ln = lanes[i], rest = m.pre ? [ln.ps] : [ln.ps, ln.pre], qz = ln.q[0];
+    if (!crate.userData.art.half) { yield* travel(crate, [ln.out, ...ln.q, ...rest], ln.det); return; }
+    if (crate.userData.part === 0) {
+      yield* travel(crate, [ln.out, qz], ln.det);
+      yield sim.move(crate, { z: qz.z - HALF_L / 2 }, dur(HALF_L / 2), linear);
+      qz.ready = false; ln.halfWait = crate;
+      return;
+    }
+    yield* travel(crate, [ln.out], ln.det);
+    yield () => ln.halfWait;
+    const first = ln.halfWait; ln.halfWait = null;
+    yield sim.move(crate, { z: qz.z + HALF_L / 2 }, dur(crate.position.z - qz.z - HALF_L / 2), linear);
+    ln.out.occ = null; ln.out.ready = false;
+    const g = new THREE.Group(); g.position.set(ln.x, CONV_Y, qz.z); dynamic.add(g);
+    g.attach(first); g.attach(crate);
+    Object.assign(g.userData, first.userData, { n: first.userData.n * 2, halfPair: true });
+    qz.occ = g; qz.ready = true;
+    yield* travel(g, rest, qz);
   }
 
   // 5) Vorstapler 1–4 (je Spur): Behälter anheben, nächster Behälter derselben Spur fährt darunter, absetzen → Paar
@@ -634,22 +725,23 @@ function startProcess(m, pairsPerTower, seed) {
       hooks.status(key, 'wartet auf Behälter');
       yield () => ln.ps.ready;
       const upper = ln.ps.occ;
-      hooks.pulse(5); hooks.status(key, 'Behälter greifen + anheben');
+      hooks.pulse(5); hooks.status(key, `${upper.userData.art.name} greifen + anheben`);
       yield clampTo(cu, true);
-      const lift = CRATE_H + 0.07;
+      const lift = upper.userData.lowerH + 0.05; // über die (geplante) untere TE heben
       sim.move(upper, { y: CONV_Y + lift }, 0.9);
       yield sim.move(cu.group, { y: CONV_Y + lift }, 0.9);
       ln.ps.occ = null; ln.ps.ready = false; // Platz unter dem angehobenen Behälter frei
-      hooks.status(key, 'nächster Behälter fährt darunter');
+      hooks.status(key, 'nächste TE fährt darunter');
       yield () => ln.ps.ready && ln.ps.occ !== upper;
-      const lower = ln.ps.occ;
-      hooks.pulse(5); hooks.status(key, 'Behälter absetzen');
-      sim.move(upper, { y: CONV_Y + PITCH }, 0.7);
-      yield sim.move(cu.group, { y: CONV_Y + PITCH }, 0.7);
+      const lower = ln.ps.occ, setY = CONV_Y + lower.userData.sh;
+      hooks.pulse(5); hooks.status(key, `auf ${lower.userData.art.name} absetzen`);
+      sim.move(upper, { y: setY }, 0.7);
+      yield sim.move(cu.group, { y: setY }, 0.7);
       yield clampTo(cu, false, 0.3);
       sim.move(cu.group, { y: CONV_Y }, 0.5);
       const pair = new THREE.Group(); pair.position.set(ln.x, CONV_Y, Z_PS); dynamic.add(pair);
       pair.attach(lower); pair.attach(upper);
+      pair.userData.seq = lower.userData.seq;
       ln.ps.occ = pair; ln.ps.ready = true;
       hooks.count('Paare gebildet');
       hooks.status(key, 'Paar fährt zur Querübergabe');
@@ -658,73 +750,83 @@ function startProcess(m, pairsPerTower, seed) {
     }
   }
 
-  // 5b) OHNE Vorstapelung: Behälter 1 (4) wird nur quer auf Spur 2 (3) übergeben, jeder Behälter einzeln zum Stacker
+  // 6) Querübergabe: Einheit (Paar bzw. Einzelbehälter) von Spur 1 (4) quer auf Spur 2 (3).
+  //    Die Einheiten laufen strikt in Turmsequenz (abwechselnd Spur 1/2 bzw. 4/3) in den Stacker → Regel R3 bleibt erfüllt.
   function* merger(s) {
     const top = s === 0 ? 1 : 2, bot = s === 0 ? 0 : 3;
     const lt = lanes[top], lb = lanes[bot], pu = P.prePusher[s], st = stackers[s];
-    const key = `Querübergabe ${side(s)}`, RES = { reserved: true };
-    let preferBot = false;
+    const key = `Querübergabe ${side(s)}`, RES = { reserved: true }, uName = m.pre ? 'Paar' : 'Behälter';
+    let next = 0;
+    lt.pre.occ = RES; // Sequenz 0 kommt von der äußeren Spur
     for (;;) {
-      hooks.status(key, 'wartet auf Behälter');
-      let pick = null;
-      yield () => {
-        const canT = lt.pre.ready, canB = lb.pre.ready && (lt.pre.occ === null || lt.pre.occ === RES);
-        pick = preferBot ? (canB ? 'bot' : canT ? 'top' : null) : (canT ? 'top' : canB ? 'bot' : null);
-        return pick !== null;
-      };
-      let crate;
-      if (pick === 'bot') {
-        crate = lb.pre.occ; lt.pre.occ = crate; lt.pre.ready = false;
-        hooks.status(key, `${m.pre ? 'Paar' : 'Behälter'} ${bot + 1} quer übergeben ${s === 0 ? '→' : '←'}`);
+      const fromBot = next % 2 === 0;
+      hooks.status(key, `wartet auf ${uName} von Spur ${(fromBot ? bot : top) + 1}`);
+      let unit;
+      if (fromBot) {
+        yield () => lb.pre.ready;
+        unit = lb.pre.occ; lt.pre.occ = unit; lt.pre.ready = false;
+        hooks.status(key, `${uName} ${bot + 1} quer übergeben ${s === 0 ? '→' : '←'}`);
         const dir = Math.sign(lt.x - lb.x), off = CRATE_W / 2 + 0.015;
         const contact = lb.x - dir * off, end = lt.x - dir * off;
         yield sim.move(pu, { x: contact }, 0.3);
         const t = Math.max(1, Math.abs(end - contact) / 0.7);
-        sim.move(crate, { x: lt.x }, t);
+        sim.move(unit, { x: lt.x }, t);
         yield sim.move(pu, { x: end }, t);
         lb.pre.occ = null; lb.pre.ready = false;
         sim.move(pu, { x: pu.userData.park }, 1.0);
-      } else crate = lt.pre.occ;
-      const unit = m.pre ? crate : new THREE.Group();
-      if (!m.pre) { unit.position.set(lt.x, CONV_Y, Z_PRE); dynamic.add(unit); unit.attach(crate); }
-      hooks.status(key, m.pre ? 'Paar wartet auf Stacker' : 'Einzelbehälter wartet auf Stacker');
+      } else {
+        yield () => lt.pre.ready;
+        unit = lt.pre.occ;
+      }
+      if ((unit.userData.seq ?? -1) !== next) console.warn('Sequenzfehler', m.tag, s, unit.userData.seq, next);
+      if (!m.pre) { const g = new THREE.Group(); g.position.set(lt.x, CONV_Y, Z_PRE); dynamic.add(g); g.attach(unit); unit = g; }
+      hooks.status(key, `${uName} wartet auf Stacker`);
       yield () => st.accepting;
       st.accepting = false;
-      hooks.pulse(6); hooks.status(key, m.pre ? 'Paar fährt in Stacker' : 'Behälter fährt in Stacker');
-      lt.pre.occ = pick === 'top' && lb.pre.occ !== null ? RES : null; lt.pre.ready = false;
-      preferBot = pick === 'top';
+      hooks.pulse(6); hooks.status(key, `${uName} fährt in Stacker`);
+      lt.pre.occ = fromBot ? null : RES; lt.pre.ready = false; // nächste Einheit kommt von der jeweils anderen Spur
+      next++;
       yield sim.move(unit, { z: Z_STK }, dur(Z_PRE - Z_STK), linear);
       st.arrived = unit;
     }
   }
 
-  // 7) Stacker (absenkend): Einheit fährt oben auf die Plattform, Plattform senkt um eine Einheit ab,
+  // 7) Stacker (absenkend): Einheit fährt oben auf die Plattform, Plattform senkt um die Einheitenhöhe ab,
   //    nächste Einheit wird oben aufgesetzt → Turm wächst von unten nach oben; fertiger Turm auf Palettierebene
   function* stacker(s) {
     const st = stackers[s], plat = P.stackLift[s], key = `Stacker ${side(s)}`;
-    const per = m.pre ? 2 : 1, UNIT = per * PITCH, unitsPerTower = (pairsPerTower * 2) / per;
     const uName = m.pre ? 'Paar' : 'Behälter';
-    let tower = null, units = 0;
+    let tower = null, topLevel = Infinity;
     for (;;) {
-      hooks.status(key, units ? `Turm (${units * per}) abgesenkt – wartet auf ${uName}` : `Plattform oben – wartet auf ${uName}`);
+      const n = tower ? tower.children.reduce((k, c) => k + c.userData.n, 0) : 0;
+      hooks.status(key, n ? `Turm (${n}) abgesenkt – wartet auf ${uName}` : `Plattform oben – wartet auf ${uName}`);
       yield () => st.arrived !== null;
       const u = st.arrived; st.arrived = null;
       hooks.pulse(7); hooks.count('Stackerhübe');
-      if (!tower) { tower = new THREE.Group(); tower.position.set(st.x, plat.position.y, Z_STK); dynamic.add(tower); }
-      for (const c of [...u.children]) tower.attach(c);
+      if (!tower) { tower = new THREE.Group(); tower.position.set(st.x, plat.position.y, Z_STK); dynamic.add(tower); topLevel = Infinity; }
+      const cs = [...u.children].sort((a, b) => a.position.y - b.position.y);
+      let last = false, unitH = 0;
+      for (const c of cs) { // c = TE (ein oder mehrere Gebinde)
+        const a = c.userData.art;
+        if (a.level > topLevel) { hooks.count('Regelverstöße R3'); hooks.log(`R3 verletzt: ${a.name} auf Niveau ${topLevel}`); }
+        topLevel = a.level; unitH += c.userData.sh; last ||= c.userData.last;
+        tower.attach(c);
+      }
       u.removeFromParent();
-      units++;
-      if (units < unitsPerTower) {
-        hooks.status(key, `Plattform senkt um ${uName} ab (${units * per} Behälter)`);
-        const y = plat.position.y - UNIT;
-        sim.move(tower, { y }, 1.0);
-        yield sim.move(plat, { y }, 1.0);
+      const nCr = () => tower.children.reduce((k, c) => k + c.userData.n, 0);
+      if (!last) {
+        hooks.status(key, `Plattform senkt um ${uName} ab (${nCr()} Behälter)`);
+        const y = plat.position.y - unitH, t = 0.6 + unitH * 1.2;
+        sim.move(tower, { y }, t);
+        yield sim.move(plat, { y }, t);
         st.accepting = true;
       } else {
+        const tes = tower.children.map((c) => ({ a: c.userData.art, layers: c.userData.layers })), n = nCr();
         hooks.count('Türme fertig');
-        hooks.log(`Turm ${side(s)} fertig (${units * per} Behälter)`);
+        { const l = m.hist[m.hist.length - 1]; m.hist.push([sim.t, l[1] + n, l[2] + tower.children.reduce((k, c) => k + (c.userData.halfPair ? 2 : 1), 0)]); } // Leistung (Ø) über fertige Türme
+        hooks.log(`Turm ${side(s)}: ${n} Beh. (${tes.length} TE), ${Math.round(towerH(tes) * 1000 + PALLET_H * 1000)} mm inkl. Palette`);
         hooks.status(key, 'Turm auf Palettierebene absenken');
-        const t = Math.max(1, (plat.position.y - Y_PAL) / 0.5);
+        const t = fin(Math.max(1, (plat.position.y - Y_PAL) / 0.5));
         sim.move(tower, { y: Y_PAL }, t);
         yield sim.move(plat, { y: Y_PAL }, t);
         hooks.status(key, 'Turm fertig – wartet auf Palettierer');
@@ -732,18 +834,18 @@ function startProcess(m, pairsPerTower, seed) {
         yield () => !pal.pushing && pl.reserved < 2;
         const idx = pl.reserved++;
         hooks.pulse(8); hooks.status(key, 'Turm fährt in Palettierer');
-        const tw = tower; tower = null; units = 0;
+        const tw = tower; tower = null;
         sim.spawn(towerRun(s, tw, idx));
-        yield dur(0.8); // Turm hat Plattform verlassen
+        yield fin(dur(0.8)); // Turm hat Plattform verlassen
         hooks.status(key, 'Plattform fährt hoch');
-        yield sim.move(plat, { y: CONV_Y }, Math.max(1, (CONV_Y - Y_PAL) / 0.6));
+        yield sim.move(plat, { y: CONV_Y }, fin(Math.max(1, (CONV_Y - Y_PAL) / 0.6)));
         st.accepting = true;
       }
     }
   }
   function* towerRun(s, tower, idx) {
     const z = Z_SLOTS[idx];
-    yield sim.move(tower, { z }, dur(tower.position.z - z), linear);
+    yield sim.move(tower, { z }, fin(dur(tower.position.z - z)), linear);
     palLanes[s].towers.push(tower);
   }
 
@@ -754,11 +856,11 @@ function startProcess(m, pairsPerTower, seed) {
       const p = makePallet(); p.position.set(X_PAL, Y_PAL - PALLET_H, Z_PAL_IN); dynamic.add(p);
       p.scale.setScalar(0.01); sim.animate(0.5, (k) => p.scale.setScalar(Math.max(0.01, smooth(k))));
       palWait.pallet = p;
-      yield sim.move(p, { z: Z_PAL_WAIT }, dur(Z_PAL_IN - Z_PAL_WAIT), linear);
+      yield sim.move(p, { z: Z_PAL_WAIT }, fin(dur(Z_PAL_IN - Z_PAL_WAIT)), linear);
       yield () => palStation.pallet === null;
       palStation.pallet = p; palWait.pallet = null;
       hooks.status('Palettenplatz', 'Leerpalette fährt ein');
-      yield sim.move(p, { z: Z_PAL }, dur(Z_PAL_WAIT - Z_PAL), linear);
+      yield sim.move(p, { z: Z_PAL }, fin(dur(Z_PAL_WAIT - Z_PAL)), linear);
       palStation.ready = true;
       hooks.status('Palettenplatz', 'Leerpalette bereit');
     }
@@ -773,25 +875,26 @@ function startProcess(m, pairsPerTower, seed) {
       const left = palLanes[0].towers, right = palLanes[1].towers;
       hooks.status(key, 'Türme links → rechts zusammenschieben');
       const off = CRATE_W / 2 + 0.015;
-      yield sim.move(pu, { x: LANE_X[1] - off }, 0.7);
-      for (const t of left) sim.move(t, { x: LANE_X[2] - CRATE_W }, 2.4);
-      yield sim.move(pu, { x: LANE_X[2] - CRATE_W - off }, 2.4);
+      yield sim.move(pu, { x: LANE_X[1] - off }, fin(0.7));
+      for (const t of left) sim.move(t, { x: LANE_X[2] - CRATE_W }, fin(2.4));
+      yield sim.move(pu, { x: LANE_X[2] - CRATE_W - off }, fin(2.4));
       hooks.status(key, '4 Türme auf Leerpalette schieben');
       const shift = X_PAL - (LANE_X[2] - CRATE_W / 2);
-      for (const t of [...left, ...right]) sim.move(t, { x: t.position.x + shift }, 3.2);
-      yield sim.move(pu, { x: LANE_X[2] - CRATE_W - off + shift }, 3.2);
+      for (const t of [...left, ...right]) sim.move(t, { x: t.position.x + shift }, fin(3.2));
+      yield sim.move(pu, { x: LANE_X[2] - CRATE_W - off + shift }, fin(3.2));
       const p = palStation.pallet;
       for (const t of [...left, ...right]) p.attach(t);
       palLanes.forEach((l) => { l.towers = []; l.reserved = 0; });
       pal.pushing = false;
       palletNo++;
-      hooks.log(`Palette ${palletNo} beladen (${4 * pairsPerTower * 2} Behälter)`);
-      hooks.count('Behälter palettiert', 4 * pairsPerTower * 2);
-      sim.move(pu, { x: pu.userData.park }, 2.6);
+      const n = [...left, ...right].reduce((k, t) => k + t.children.reduce((j, c) => j + c.userData.n, 0), 0);
+      hooks.log(`Palette ${palletNo} beladen (${n} Behälter)`);
+      hooks.count('Behälter palettiert', n);
+      sim.move(pu, { x: pu.userData.park }, fin(2.6));
       hooks.status(key, 'Schieber fährt zurück');
       hooks.status('Palettenplatz', 'Vollpalette fährt ab');
       palStation.ready = false;
-      yield sim.move(p, { z: Z_PAL - 1.45 }, dur(1.45), linear);
+      yield sim.move(p, { z: Z_PAL - 1.45 }, fin(dur(1.45)), linear);
       palStation.pallet = null;
       sim.spawn(palletOut(p, palletNo));
     }
@@ -808,21 +911,25 @@ function startProcess(m, pairsPerTower, seed) {
   sim.spawn(palletFeeder()); sim.spawn(palletizer());
 }
 
+const WARMUP = 1200, RATE_WINDOW = 600; // Einlaufphase (unsichtbar) und Mittelungsfenster in s
+const MAX_H = 1850;                      // max. Palettenhöhe inkl. Palette (mm), palettier-lab
 function restart() {
   for (const m of machines) m.dyn.clear();
   movers.forEach((o, i) => o.position.copy(moverHome[i]));
   sim = new Sim();
-  ui.steps = {}; ui.log = [];
-  const pairs = Number(document.getElementById('pairs').value), seed = Math.floor(Math.random() * 1e6);
-  for (const m of machines) startProcess(m, pairs, seed);
+  const seed = Math.floor(Math.random() * 1e6);
+  for (const m of machines) startProcess(m, MAX_H, seed);
+  sim.step(WARMUP); // Anlage läuft vorab ein → Leistung steht sofort auf Betriebsniveau
+  for (const m of machines) for (const k in m.stats) m.stats[k] = 0;
+  ui.t0 = sim.t; ui.steps = {}; ui.log = [];
 }
 
 // ======================= UI =======================
-let running = true, speed = 1.5;
+let running = true, speed = 4;
 const $ = (id) => document.getElementById(id);
 $('play').onclick = () => { running = !running; $('play').textContent = running ? '⏸ Pause' : '▶ Start'; };
 $('reset').onclick = restart;
-$('pairs').onchange = restart;
+$('arts').innerHTML = ARTICLES.map((a) => `<span><i style="background:${a.color}"></i>${a.name} · ${a.crate} ${a.half ? '400×300' : '600×400'} · ${Math.round(a.h * 1000)} mm · Niv. ${a.level}${a.double ? '' : ' · nicht vorgestapelt'}</span>`).join('');
 $('speed').oninput = (e) => { speed = Number(e.target.value); $('speedv').textContent = speed + '×'; };
 $('labels').onclick = () => { labelGroup.visible = !labelGroup.visible; $('labels').classList.toggle('on', labelGroup.visible); };
 const CX = OX_B / 2;
@@ -836,27 +943,30 @@ const CAMS = { // [Position, Ziel, maschinenbezogen?]
   top: [[CX, 25, 1.01], [CX, 0, 0.6], false],
 };
 let camAnim = null;
-function goCam(name) {
-  document.querySelectorAll('#cams button').forEach((x) => x.classList.toggle('on', x.dataset.cam === name));
-  const [p, t, rel] = CAMS[name], ox = rel ? machines[Number($('camm').value)].ox : 0;
+function goCam(name, mi) {
+  document.querySelectorAll('#cams button').forEach((x) => x.classList.toggle('on', x.dataset.cam === name && (x.dataset.m ?? '') === (mi ?? '')));
+  const [p, t, rel] = CAMS[name], ox = rel ? machines[Number(mi ?? 0)].ox : 0;
   camAnim = { t0: performance.now(), fp: camera.position.clone(), ft: controls.target.clone(),
     tp: new THREE.Vector3(p[0] + ox, p[1], p[2]), tt: new THREE.Vector3(t[0] + ox, t[1], t[2]) };
 }
-document.querySelectorAll('#cams button').forEach((b) => { b.onclick = () => goCam(b.dataset.cam); });
-$('camm').onchange = () => { const on = document.querySelector('#cams button.on'); if (on && CAMS[on.dataset.cam][2]) goCam(on.dataset.cam); };
+document.querySelectorAll('#cams button').forEach((b) => { b.onclick = () => goCam(b.dataset.cam, b.dataset.m); });
 camera.position.set(...CAMS.compare[0]); controls.target.set(...CAMS.compare[1]);
 const stepEls = [...document.querySelectorAll('#steps li')];
 let uiTimer = 0;
-const perHour = (m) => (sim.t > 1 ? Math.round((m.stats['Behälter palettiert'] / sim.t) * 3600) : 0);
+const perHour = (m, j = 1) => { // gleitender Mittelwert über RATE_WINDOW
+  const h = m.hist, now = sim.t, from = now - RATE_WINDOW;
+  const at = (t) => { let v = 0; for (const e of h) { if (e[0] > t) break; v = e[j]; } return v; };
+  return Math.round(((h[h.length - 1][j] - at(from)) / RATE_WINDOW) * 3600);
+};
 function updateUI() {
   for (const li of stepEls) { const t = ui.steps[li.dataset.step]; li.classList.toggle('active', t !== undefined && sim.t - t < 2.0); }
   const [A, B] = machines;
-  const pa = A.stats['Behälter palettiert'], pb = B.stats['Behälter palettiert'];
-  const factor = pb > 0 ? (pa / pb).toFixed(2) + '×' : '–';
+  const factor = perHour(B) > 0 ? (perHour(A) / perHour(B)).toFixed(2) + '×' : '–';
   const row = (k, a, b, cls = '') => `<div class="${cls}">${k}</div><div class="a ${cls}">${a}</div><div class="b ${cls}">${b}</div>`;
-  $('stats').innerHTML = row('', 'mit', 'ohne', 'hd') + row('Simulationszeit', fmtTime(sim.t), fmtTime(sim.t)) +
+  $('stats').innerHTML = row('', 'mit', 'ohne', 'hd') + row('Laufzeit seit Start', fmtTime(sim.t - ui.t0), fmtTime(sim.t - ui.t0)) +
     STAT_KEYS.map((k) => row(k, A.stats[k], B.stats[k])).join('') +
-    row('Leistung Behälter/h', perHour(A), perHour(B), 'big') +
+    row('Leistung TE/h (Ø 10 min)', perHour(A, 2), perHour(B, 2)) +
+    row('Leistung Behälter/h (Ø 10 min)', perHour(A), perHour(B), 'big') +
     `<div class="big">Faktor mit / ohne</div><div class="a big" style="grid-column:span 2">${factor}</div>`;
   for (const m of machines) m.titleEl.innerHTML = `${m.name}<small>${m.stats['Paletten abgeführt']} Paletten · ${perHour(m)} Behälter/h</small>`;
   const st = (m) => Object.entries(m.status).sort(([a], [b]) => a.localeCompare(b, 'de'))
@@ -885,28 +995,74 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-// GLB-Behälter laden (eingebettet), danach starten; bei Fehler prozedurale Behälter
+// GLB-Behälter + Inhalte laden (eingebettet), danach starten; bei Fehler prozedurale Behälter
 function prepareTemplates(root) {
-  for (let lane = 0; lane < 4; lane++) {
+  for (const a of ARTICLES) {
     const model = root.clone(true);
-    model.traverse((o) => { if (o.isMesh) { o.material = crateMats[lane]; o.castShadow = true; o.receiveShadow = true; } });
+    model.traverse((o) => { if (o.isMesh) { o.material = crateMats[a.id]; o.castShadow = true; o.receiveShadow = true; } });
     const rot = new THREE.Group(); rot.add(model);
     const b0 = new THREE.Box3().setFromObject(model), s0 = b0.getSize(new THREE.Vector3());
     if (s0.x > s0.z) rot.rotation.y = Math.PI / 2; // Längsseite in Förderrichtung
     rot.updateMatrixWorld(true);
     const b = new THREE.Box3().setFromObject(rot), s = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
     rot.position.set(-c.x, -b.min.y, -c.z);
-    const outer = new THREE.Group(); outer.scale.set(CRATE_W / s.x, CRATE_H / s.y, CRATE_L / s.z); outer.add(rot);
-    crateTemplates[lane] = outer;
+    const outer = new THREE.Group(); outer.scale.set(CRATE_W / s.x, a.h / s.y, (a.half ? HALF_L : CRATE_L) / s.z); outer.add(rot);
+    crateTemplates[a.id] = outer;
   }
 }
+// Inhalt wie im palettier-lab: 5 × 3 Instanzen, Länge entlang Lab-X → hier per Drehung entlang Förderrichtung.
+// Performance: Original-Früchte haben bis 8500 Dreiecke → beim Laden auf ca. CONTENT_VERTS Eckpunkte vereinfacht.
+const CONTENT_VERTS = 90;
+function lowPoly(geo) {
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', geo.getAttribute('position')); if (geo.index) g.setIndex(geo.index);
+  const merged = mergeVertices(g, 1e-4), n = merged.getAttribute('position').count;
+  if (n <= CONTENT_VERTS * 1.3) { merged.computeVertexNormals(); return merged; }
+  const s = new SimplifyModifier().modify(merged, n - CONTENT_VERTS);
+  s.computeVertexNormals();
+  return s;
+}
+function prepareContent(id, root) {
+  const sc = id === 'vegetable' ? 0.65 : id === 'banana' ? 0.72 : 0.9;
+  root.updateMatrixWorld(true);
+  const parts = [];
+  root.traverse((part) => {
+    if (!part.isMesh) return;
+    let geo = part.geometry;
+    try { geo = lowPoly(part.geometry); } catch (e) { console.warn('Vereinfachung fehlgeschlagen', id, e); }
+    parts.push({ geo, mat: part.material, mw: part.matrixWorld.clone() });
+  });
+  // Ganzgebinde: Lab-Länge 600 entlang X → Drehung auf Förderrichtung; Halbgebinde: Länge 400 quer (X), 3 × 3
+  const build = (nx, nz, L, W, rotY) => {
+    const g = new THREE.Group(); g.rotation.y = rotY;
+    for (const { geo, mat, mw } of parts) {
+      const inst = new THREE.InstancedMesh(geo, mat, nx * nz);
+      for (let ix = 0; ix < nx; ix++) for (let iz = 0; iz < nz; iz++) {
+        const t = new THREE.Matrix4().makeScale(sc, sc, sc);
+        t.setPosition(((ix - (nx - 1) / 2) * (L - 0.09)) / nx, 0, ((iz - 1) * (W - 0.1)) / nz);
+        t.multiply(mw);
+        inst.setMatrixAt(ix * nz + iz, t);
+      }
+      inst.instanceMatrix.needsUpdate = true; inst.computeBoundingSphere();
+      g.add(inst);
+    }
+    return g;
+  };
+  contentTemplates[id] = build(5, 3, CRATE_L, CRATE_W, Math.PI / 2);
+  contentTemplates[id + '_half'] = build(3, 3, CRATE_W, HALF_L, 0);
+}
 function boot() { restart(); requestAnimationFrame(loop); }
-window.__vs = { ui, machines, get sim() { return sim; }, dynamic, camera, controls, step: (s) => sim.step(s) };
-try {
-  const bin = Uint8Array.from(atob(window.CRATE_GLB_B64 || ''), (c) => c.charCodeAt(0));
-  if (!bin.length) throw new Error('kein GLB');
-  new GLTFLoader().parse(bin.buffer, '', (gltf) => { prepareTemplates(gltf.scene); boot(); }, (e) => { console.warn(e); boot(); });
-} catch (e) { console.warn('Behälter-GLB nicht geladen, prozedurale Behälter', e); boot(); }
+window.__vs = { ui, machines, get sim() { return sim; }, dynamic, camera, controls, step: (s) => sim.step(s), setTakt: (t) => { TAKT = t; }, restart };
+const parseB64 = (b64) => new Promise((res, rej) => {
+  if (!b64) return rej(new Error('kein GLB'));
+  const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+  new GLTFLoader().parse(bin.buffer, '', (g) => res(g.scene), rej);
+});
+const CG = window.CONTENT_GLB_B64 || {};
+Promise.allSettled([parseB64(window.CRATE_GLB_B64), ...CONTENT_IDS.map((id) => parseB64(CG[id]))]).then(([crate, ...cont]) => {
+  if (crate.status === 'fulfilled') prepareTemplates(crate.value); else console.warn('Behälter-GLB nicht geladen, prozedurale Behälter', crate.reason);
+  cont.forEach((r, i) => { if (r.status === 'fulfilled') prepareContent(CONTENT_IDS[i], r.value); else console.warn('Inhalt nicht geladen', CONTENT_IDS[i], r.reason); });
+  boot();
+});
 </script>
 </body>
 </html>
