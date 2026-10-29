@@ -137,6 +137,7 @@ const DY = CONV_Y - 0.78;       // Höhenversatz gegenüber Standard-Förderhöh
 const Y_PAL = 0.35;             // Palettierebene (Oberkante Palette / Palettiertisch)
 const TRAY_H = 0.06, TRAY_W = 0.46, TRAY_L = 0.66;
 const CRATE_W = 0.4, CRATE_L = 0.6, CRATE_MAX_H = 0.279;
+const SLOT_CLEARANCE = 0.04;
 // Artikel / Gebinde (Auszug Gebindekatalog palettier-lab, Maße in m) – Stapelniveau 3 = unten … 1 = oben (Regel R3)
 // half: Halbgebinde 400×300 (R2: immer typgleich paarweise nebeneinander in einer Lage); double: darf vorgestapelt vom Lager kommen
 // h = physische Höhe; sh = Stapelabstand. Gleiche Werte verhindern, dass sich Gebinde beim Stapeln überlagern.
@@ -632,7 +633,7 @@ function startProcess(m, maxH, seed) {
   function* moveFromSlot(obj, held, z, nextOcc = null) {
     const from = obj.position.clone(), to = from.clone();
     to.z = z;
-    const distance = Math.abs(z - from.z), clearDistance = Math.min(travelLength(obj), distance);
+    const distance = Math.abs(z - from.z), clearDistance = Math.min(travelLength(obj) + SLOT_CLEARANCE, distance);
     let released = !held;
     if (held) held.ready = false;
     yield sim.animate(dur(distance), (p) => {
@@ -860,12 +861,18 @@ function startProcess(m, maxH, seed) {
   function* stacker(s) {
     const st = stackers[s], plat = P.stackLift[s], key = `Stacker ${side(s)}`;
     const uName = m.pre ? 'Paar' : 'Behälter';
-    let tower = null, topLevel = Infinity, lastTowerAt = null;
+    let tower = null, topLevel = Infinity, nextCycleAt = null;
     for (;;) {
       const n = tower ? tower.children.reduce((k, c) => k + c.userData.n, 0) : 0;
       hooks.status(key, n ? `Turm (${n}) abgesenkt – wartet auf ${uName}` : `Plattform oben – wartet auf ${uName}`);
       yield () => st.arrived !== null;
       const u = st.arrived; st.arrived = null;
+      const unitN = u.children.reduce((k, c) => k + c.userData.n, 0);
+      if (nextCycleAt !== null && nextCycleAt > sim.t) {
+        hooks.status(key, 'Zykluszeit nach Angebot – wartet vor nächstem Hub');
+        yield nextCycleAt - sim.t;
+      }
+      nextCycleAt = sim.t + unitN * 3600 / (OFFER_SYSTEM_RATE[m.pre ? 'pre' : 'single'] / 2);
       hooks.pulse(7); hooks.count('Stackerhübe');
       if (!tower) { tower = new THREE.Group(); tower.position.set(st.x, plat.position.y, Z_STK); dynamic.add(tower); topLevel = Infinity; }
       const cs = [...u.children].sort((a, b) => a.position.y - b.position.y);
@@ -886,10 +893,6 @@ function startProcess(m, maxH, seed) {
         st.accepting = true;
       } else {
         const tes = tower.children.map((c) => ({ a: c.userData.art, layers: c.userData.layers })), n = nCr();
-        const targetInterval = n * 3600 / (OFFER_SYSTEM_RATE[m.pre ? 'pre' : 'single'] / 2);
-        const wait = lastTowerAt === null ? 0 : targetInterval - (sim.t - lastTowerAt);
-        if (wait > 0) { hooks.status(key, 'Zykluszeit nach Angebot – wartet'); yield wait; }
-        lastTowerAt = sim.t;
         hooks.count('Türme fertig');
         { const l = m.hist[m.hist.length - 1]; m.hist.push([sim.t, l[1] + n, l[2] + tower.children.reduce((k, c) => k + (c.userData.halfPair ? 2 : 1), 0)]); } // Leistung (Ø) über fertige Türme
         hooks.log(`Turm ${side(s)}: ${n} Beh. (${tes.length} TE), ${Math.round(towerH(tes) * 1000 + PALLET_H * 1000)} mm inkl. Palette`);
@@ -897,7 +900,7 @@ function startProcess(m, maxH, seed) {
         const t = fin(Math.max(1, (plat.position.y - Y_PAL) / 0.5));
         sim.move(tower, { y: Y_PAL }, t);
         yield sim.move(plat, { y: Y_PAL }, t);
-        hooks.status(key, 'Turm fertig – wartet auf Palettierer');
+        hooks.status(key, 'Turm fertig – wartet auf freien Palettierer-Puffer');
         const pl = palLanes[s];
         yield () => !pal.pushing && pl.reserved < 2;
         const idx = pl.reserved++;
