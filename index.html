@@ -155,6 +155,7 @@ const fin = (d) => d * IN_F;
 let TAKT = 1.62;               // Gemeinsamer Bewegungsfaktor, auf die Angebotsleistung bei 85 % abgestimmt
 const PALLET_H = 0.144;
 const LANE_X = [-1.9, -0.85, 0.85, 1.9];
+const LANE_IDS = { pre: [0, 1, 2, 3], single: [1, 2] };
 const Z_IN = [8.3, 7.55, 6.8, 6.05, 5.3];
 const Z_DET = 4.5, Z_OUT = 3.7, Z_Q = [3.0], Z_PS = 2.3, Z_PRE = 1.45, Z_STK = 0;
 const Z_SLOTS = [-2.7, -2.1], Z_PAL = -2.4;
@@ -385,32 +386,44 @@ const lbl = new THREE.Group(); lbl.position.x = ox; labelGroup.add(lbl);
 const dyn = new THREE.Group(); dyn.position.x = ox; dynamic.add(dyn);
 world = root; labelParent = lbl;
 const P = { detray: [], trayPusher: [], preLift: [], prePusher: [], stackLift: [], palPusher: null };
+const laneIds = LANE_IDS[pre ? 'pre' : 'single'];
 // Spuren (oben); Spur 2/3 enden am Stacker
-LANE_X.forEach((x, i) => {
+laneIds.forEach((i) => {
+  const x = LANE_X[i];
   const end = i === 1 || i === 2 ? Z_STK + 0.46 : Z_PRE - 0.33;
   conveyor(x, 8.75, x, end);
 });
 // Detraying: Greifer je Spur
-LANE_X.forEach((x) => P.detray.push(clampUnit(x, Z_DET, CONV_Y + TRAY_H, { style: 'bar', barY: 0.55, frameH: 2.0 + DY })));
+laneIds.forEach((i) => {
+  P.detray[i] = clampUnit(LANE_X[i], Z_DET, CONV_Y + TRAY_H, { style: 'bar', barY: 0.55, frameH: 2.0 + DY });
+});
 // Tray-Outfeed: Querförderer + Schieber
-conveyor(LANE_X[0] - 0.3, Z_OUT, -3.95, Z_OUT, { width: 0.7, type: 'belt', y: CONV_Y - 0.004 });
-conveyor(LANE_X[3] + 0.3, Z_OUT, 3.95, Z_OUT, { width: 0.7, type: 'belt', y: CONV_Y - 0.004 });
+if (pre) {
+  conveyor(LANE_X[0] - 0.3, Z_OUT, -3.95, Z_OUT, { width: 0.7, type: 'belt', y: CONV_Y - 0.004 });
+  conveyor(LANE_X[3] + 0.3, Z_OUT, 3.95, Z_OUT, { width: 0.7, type: 'belt', y: CONV_Y - 0.004 });
+}
 conveyor(LANE_X[1] + 0.3, Z_OUT, LANE_X[2] - 0.3, Z_OUT, { width: 0.7, type: 'belt', y: CONV_Y - 0.004, legs: false });
 conveyor(0, Z_OUT + 0.36, 0, 9.4, { width: 0.52, type: 'belt', y: CONV_Y - 0.004 });
-const trayPark = [LANE_X[0] + 0.27, LANE_X[1] - 0.27, LANE_X[2] + 0.27, LANE_X[3] - 0.27];
-trayPark.forEach((px) => P.trayPusher.push(pusher(px, Z_OUT, { plateL: 0.6, rodZ: 0.38, beamY: 1.55 + DY })));
+laneIds.forEach((i) => {
+  const parkX = LANE_X[i] + (i % 2 === 0 ? 0.27 : -0.27);
+  P.trayPusher[i] = pusher(parkX, Z_OUT, { plateL: 0.6, rodZ: 0.38, beamY: 1.55 + DY });
+});
 for (const s of [-1, 1]) beamX(-3.6, 3.6, Z_OUT + s * 0.38, 1.55 + DY);
 for (const x of [-3.6, 3.6]) for (const s of [-1, 1]) box(0.08, 1.7 + DY, 0.08, M.frame, x, (1.7 + DY) / 2, Z_OUT + s * 0.38);
 // Vorstapler 1–4: je Spur ein Hubwerk, einen Förderplatz vor der Querübergabe (nur Maschine MIT Vorstapelung)
-if (pre) LANE_X.forEach((x) => P.preLift.push(clampUnit(x, Z_PS, CONV_Y, { style: 'bar', barY: 0.72, frameH: 2.1 + DY })));
-// Querübergabe: Schieber 1→2 und 4→3
-P.prePusher.push(pusher(LANE_X[0] - CRATE_W / 2 - 0.045, Z_PRE, { plateL: 0.5, rodZ: 0.36, beamY: 1.75 + DY }));
-P.prePusher.push(pusher(LANE_X[3] + CRATE_W / 2 + 0.045, Z_PRE, { plateL: 0.5, rodZ: 0.36, beamY: 1.75 + DY }));
-for (const [a, b] of [[-2.4, -0.6], [0.6, 2.4]]) {
-  for (const s of [-1, 1]) beamX(a, b, Z_PRE + s * 0.36, 1.75 + DY);
-  for (const x of [a, b]) for (const s of [-1, 1]) box(0.08, 1.9 + DY, 0.08, M.frame, x, (1.9 + DY) / 2, Z_PRE + s * 0.36);
-  const xa = a < 0 ? LANE_X[0] + 0.28 : LANE_X[2] + 0.28, xb = a < 0 ? LANE_X[1] - 0.28 : LANE_X[3] - 0.28;
-  box(Math.abs(xb - xa), 0.02, 0.62, M.plate, (xa + xb) / 2, CONV_Y - 0.01, Z_PRE);
+if (pre) {
+  laneIds.forEach((i) => {
+    P.preLift[i] = clampUnit(LANE_X[i], Z_PS, CONV_Y, { style: 'bar', barY: 0.72, frameH: 2.1 + DY });
+  });
+  // Querübergabe: Schieber 1→2 und 4→3
+  P.prePusher[0] = pusher(LANE_X[0] - CRATE_W / 2 - 0.045, Z_PRE, { plateL: 0.5, rodZ: 0.36, beamY: 1.75 + DY });
+  P.prePusher[1] = pusher(LANE_X[3] + CRATE_W / 2 + 0.045, Z_PRE, { plateL: 0.5, rodZ: 0.36, beamY: 1.75 + DY });
+  for (const [a, b] of [[-2.4, -0.6], [0.6, 2.4]]) {
+    for (const s of [-1, 1]) beamX(a, b, Z_PRE + s * 0.36, 1.75 + DY);
+    for (const x of [a, b]) for (const s of [-1, 1]) box(0.08, 1.9 + DY, 0.08, M.frame, x, (1.9 + DY) / 2, Z_PRE + s * 0.36);
+    const xa = a < 0 ? LANE_X[0] + 0.28 : LANE_X[2] + 0.28, xb = a < 0 ? LANE_X[1] - 0.28 : LANE_X[3] - 0.28;
+    box(Math.abs(xb - xa), 0.02, 0.62, M.plate, (xa + xb) / 2, CONV_Y - 0.01, Z_PRE);
+  }
 }
 // Stacker: Hubplattform (Rollenbahn) senkt sich mit dem wachsenden Turm bis auf Palettierebene ab
 for (const x of [LANE_X[1], LANE_X[2]]) {
@@ -455,16 +468,21 @@ P.palPusher = pusher(-1.28, Z_PAL, { plateH: 1.75, plateL: 1.22, plateY: Y_PAL +
 for (const [w, d, x, z] of [[palX1 + 1.8, 0.06, (palX1 - 1.7) / 2, Z_PAL - 1.0], [palX1 + 1.8, 0.06, (palX1 - 1.7) / 2, Z_PAL + 1.0], [0.06, 2.0, -1.7, Z_PAL]]) box(w, 0.004, d, M.zone, x, 0.003, z);
 
 // Beschriftung
-LANE_X.forEach((x, i) => {
-  label(String(i + 1), x, 0.25, 9.05, 'num');
-  if (pre) label(String(i + 1), x, CONV_Y + 1.45, Z_PS, 'num');
-  else label(String(i + 1), x, CONV_Y + 1.3, Z_PRE + 0.55, 'num');
+laneIds.forEach((i, visibleIndex) => {
+  const laneNo = visibleIndex + 1;
+  label(String(laneNo), LANE_X[i], 0.25, 9.05, 'num');
+  if (pre) label(String(laneNo), LANE_X[i], CONV_Y + 1.45, Z_PS, 'num');
+  else label(String(laneNo), LANE_X[i], CONV_Y + 1.3, Z_PRE + 0.55, 'num');
 });
-label('Infeed Tray + Behälter', -1.4, 0.05, 10.3); label('Infeed Tray + Behälter', 1.4, 0.05, 10.3);
-label('Detraying', -1.4, 2.2 + DY, Z_DET); label('Detraying', 1.4, 2.2 + DY, Z_DET);
-label('Outfeed Tray ←', -3.4, 1.15 + DY, Z_OUT); label('→ Outfeed Tray', 3.4, 1.15 + DY, Z_OUT); label('Outfeed Tray ↓', 0, 1.15 + DY, Z_OUT + 1.2);
+const laneGroupXs = pre ? [-1.4, 1.4] : [LANE_X[1], LANE_X[2]];
+laneGroupXs.forEach((x) => {
+  label('Infeed Tray + Behälter', x, 0.05, 10.3);
+  label('Detraying', x, 2.2 + DY, Z_DET);
+});
+if (pre) { label('Outfeed Tray ←', -3.4, 1.15 + DY, Z_OUT); label('→ Outfeed Tray', 3.4, 1.15 + DY, Z_OUT); }
+label('Outfeed Tray ↓', 0, 1.15 + DY, Z_OUT + 1.2);
 if (pre) { label('Vorstapler 1 / 2', -1.4, CONV_Y + 1.75, Z_PS); label('Vorstapler 3 / 4', 1.4, CONV_Y + 1.75, Z_PS); }
-label('Querübergabe', -1.4, CONV_Y + 1.1, Z_PRE - 0.1); label('Querübergabe', 1.4, CONV_Y + 1.1, Z_PRE - 0.1);
+if (pre) { label('Querübergabe', -1.4, CONV_Y + 1.1, Z_PRE - 0.1); label('Querübergabe', 1.4, CONV_Y + 1.1, Z_PRE - 0.1); }
 label('Stacker (absenkend)', LANE_X[1], CONV_Y + 1.25, Z_STK); label('Stacker (absenkend)', LANE_X[2], CONV_Y + 1.25, Z_STK);
 label('Palletizer (Palettierebene)', 0.9, 2.85, Z_PAL);
 label('Infeed Leer-EURO-PAL', X_PAL, 0.25, Z_PAL_IN + 0.6); label('Outfeed beladen', X_PAL, 0.25, Z_PAL_OUT + 0.6);
@@ -558,6 +576,7 @@ function startProcess(m, maxH, seed) {
   const hooks = makeHooks(m), P = m.P, dynamic = m.dyn;
   m.stats = Object.fromEntries(STAT_KEYS.map((k) => [k, 0])); m.status = {}; m.hist = [[0, 0, 0]];
   const S = SPEED;
+  const laneIds = LANE_IDS[m.pre ? 'pre' : 'single'];
   const dur = (d) => Math.max(0.35, Math.abs(d) / S);
   const Slot = (z) => ({ z, occ: null, ready: false });
   const lanes = LANE_X.map((x) => ({ x, inSlots: Z_IN.map(Slot), det: Slot(Z_DET), out: Slot(Z_OUT), q: Z_Q.map(Slot), ps: Slot(Z_PS), pre: Slot(Z_PRE) }));
@@ -569,8 +588,8 @@ function startProcess(m, maxH, seed) {
   let crateNo = 0, palletNo = 0;
   const side = (s) => (s === 0 ? 'links' : 'rechts');
 
-  // Palettenbildung: je Stacker werden Türme geplant (max. Palettenhöhe, Stapelniveau 3 unten → 1 oben),
-  // danach als Sequenz auf die beiden zuführenden Spuren verteilt (beide Maschinen erhalten dieselben Türme).
+  // Palettenbildung: je Stacker werden Türme geplant (max. Palettenhöhe, Stapelniveau 3 unten → 1 oben).
+  // Mit Vorstapelung laufen sie über zwei Spuren, ohne Vorstapelung direkt über eine Spur je Stacker.
   const laneQ = [[], [], [], []];
   const plans = [0, 1].map((s) => ({ rng: rngFor(seed * 31 + s), seq: 0 }));
   const wSum = ARTICLES.reduce((n, a) => n + a.weight, 0);
@@ -590,11 +609,11 @@ function startProcess(m, maxH, seed) {
       }
       if (!ok) miss++;
     }
-    if (cs.length % 2) cs.pop(); // gerade Anzahl TEs → Paare für die Vorstapelung
+    if (m.pre && cs.length % 2) cs.pop(); // gerade Anzahl TEs → Paare für die Vorstapelung
     const per = m.pre ? 2 : 1, n = cs.length / per;
     for (let k = 0; k < n; k++) {
       const unit = cs.slice(k * per, k * per + per);        // unten → oben
-      const lane = p.seq % 2 === 0 ? bot : top;
+      const lane = m.pre ? (p.seq % 2 === 0 ? bot : top) : s + 1;
       const lowerH = unit.length > 1 ? (unit[0].layers - 1) * unit[0].a.sh + unit[0].a.h : 0;
       for (const t of unit.reverse())                        // Vorstapler: obere TE kommt zuerst
         for (const part of t.a.half ? [0, 1] : [-1])         // Halbgebinde: zwei typgleiche TEs nacheinander (R2)
@@ -622,12 +641,13 @@ function startProcess(m, maxH, seed) {
   // 1) Infeed: Tray + Behälter
   function* feeder(i) {
     const ln = lanes[i], rng = rngFor(seed * 7 + i);
+    const visualLane = m.pre ? i : i - 1;
     yield 0.4 + i * 0.9 + rng();
     for (;;) {
       const s0 = ln.inSlots[0];
       yield () => s0.occ === null;
       const unit = new THREE.Group(); unit.position.set(ln.x, CONV_Y, s0.z);
-      const tray = makeTray(), job = nextCrate(i), crate = makeTE(job.a, job.layers, i);
+      const tray = makeTray(), job = nextCrate(i), crate = makeTE(job.a, job.layers, visualLane);
       crate.position.y = TRAY_H; Object.assign(crate.userData, { no: ++crateNo, seq: job.seq, last: job.last, lowerH: job.lowerH, part: job.part });
       unit.add(tray, crate); unit.userData = { tray, crate };
       unit.scale.setScalar(0.01); dynamic.add(unit);
@@ -641,7 +661,7 @@ function startProcess(m, maxH, seed) {
 
   // 2) Detraying: Behälter anheben, Tray zum Outfeed, Behälter absetzen
   function* detray(i) {
-    const ln = lanes[i], cu = P.detray[i], key = `Detraying ${i + 1}`;
+    const ln = lanes[i], cu = P.detray[i], laneNo = m.pre ? i + 1 : i, key = `Detraying ${laneNo}`;
     for (;;) {
       hooks.status(key, 'wartet auf Tray');
       yield () => ln.det.ready;
@@ -669,9 +689,9 @@ function startProcess(m, maxH, seed) {
     }
   }
 
-  // 3) Outfeed: Tray seitlich abschieben (1 links, 2 rechts, 3 links, 4 rechts)
+  // 3) Outfeed: mittlere Spuren zum Sammelband, äußere Spuren seitlich abschieben
   function* trayOut(i, tray) {
-    const ln = lanes[i], pu = P.trayPusher[i], key = `Outfeed ${i + 1}`;
+    const ln = lanes[i], pu = P.trayPusher[i], laneNo = m.pre ? i + 1 : i, key = `Outfeed ${laneNo}`;
     const dir = i === 0 || i === 2 ? -1 : 1;
     const target = i === 0 ? -3.05 : i === 3 ? 3.05 : 0;
     if (i === 1 || i === 2) { hooks.status(key, 'wartet auf Sammelband'); yield () => !center.busy; center.busy = true; }
@@ -751,12 +771,31 @@ function startProcess(m, maxH, seed) {
     }
   }
 
-  // 6) Querübergabe: Einheit (Paar bzw. Einzelbehälter) von Spur 1 (4) quer auf Spur 2 (3).
-  //    Die Einheiten laufen strikt in Turmsequenz (abwechselnd Spur 1/2 bzw. 4/3) in den Stacker → Regel R3 bleibt erfüllt.
+  // 6) Zuführung zum Stacker: mit Vorstapelung quer übergeben, ohne Vorstapelung direkt zugeführt.
+  //    Bei Vorstapelung wechseln die Einheiten strikt zwischen den beiden Spuren eines Stackers → Regel R3 bleibt erfüllt.
   function* merger(s) {
+    const st = stackers[s], uName = m.pre ? 'Paar' : 'Behälter';
+    if (!m.pre) {
+      const laneIndex = s + 1, ln = lanes[laneIndex], key = `Zuführung Stacker ${side(s)}`;
+      let next = 0;
+      for (;;) {
+        hooks.status(key, `wartet auf ${uName} von Einfahrt ${s + 1}`);
+        yield () => ln.pre.ready;
+        const crate = ln.pre.occ; ln.pre.occ = null; ln.pre.ready = false;
+        if ((crate.userData.seq ?? -1) !== next) console.warn('Sequenzfehler', m.tag, s, crate.userData.seq, next);
+        const unit = new THREE.Group(); unit.position.set(ln.x, CONV_Y, Z_PRE); dynamic.add(unit); unit.attach(crate);
+        hooks.status(key, `${uName} wartet auf Stacker`);
+        yield () => st.accepting;
+        st.accepting = false;
+        hooks.pulse(6); hooks.status(key, `${uName} fährt in Stacker`);
+        next++;
+        yield sim.move(unit, { z: Z_STK }, dur(Z_PRE - Z_STK), linear);
+        st.arrived = unit;
+      }
+    }
     const top = s === 0 ? 1 : 2, bot = s === 0 ? 0 : 3;
-    const lt = lanes[top], lb = lanes[bot], pu = P.prePusher[s], st = stackers[s];
-    const key = `Querübergabe ${side(s)}`, RES = { reserved: true }, uName = m.pre ? 'Paar' : 'Behälter';
+    const lt = lanes[top], lb = lanes[bot], pu = P.prePusher[s];
+    const key = `Querübergabe ${side(s)}`, RES = { reserved: true };
     let next = 0;
     lt.pre.occ = RES; // Sequenz 0 kommt von der äußeren Spur
     for (;;) {
@@ -911,7 +950,7 @@ function startProcess(m, maxH, seed) {
     yield 0.5; p.removeFromParent();
   }
 
-  for (let i = 0; i < 4; i++) { sim.spawn(feeder(i)); sim.spawn(detray(i)); if (m.pre) sim.spawn(lanePrestack(i)); }
+  for (const i of laneIds) { sim.spawn(feeder(i)); sim.spawn(detray(i)); if (m.pre) sim.spawn(lanePrestack(i)); }
   for (let s = 0; s < 2; s++) { sim.spawn(merger(s)); sim.spawn(stacker(s)); }
   sim.spawn(palletFeeder()); sim.spawn(palletizer());
 }
