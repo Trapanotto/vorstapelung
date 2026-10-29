@@ -583,7 +583,7 @@ function startProcess(m, maxH, seed) {
   const Slot = (z) => ({ z, occ: null, ready: false });
   const lanes = LANE_X.map((x) => ({ x, inSlots: Z_IN.map(Slot), det: Slot(Z_DET), out: Slot(Z_OUT), q: Z_Q.map(Slot), ps: Slot(Z_PS), pre: Slot(Z_PRE) }));
   const center = { busy: false };
-  const stackers = [0, 1].map((s) => ({ x: LANE_X[s === 0 ? 1 : 2], accepting: true, arrived: null }));
+  const stackers = [0, 1].map((s) => ({ x: LANE_X[s === 0 ? 1 : 2], accepting: true, arrived: null, nextHubAt: null }));
   const palLanes = [0, 1].map(() => ({ towers: [], reserved: 0 }));
   const pal = { pushing: false };
   const palStation = { pallet: null, ready: false }, palWait = { pallet: null };
@@ -794,6 +794,22 @@ function startProcess(m, maxH, seed) {
     }
   }
 
+  function* sendToStacker(st, unit, source, key, unitName, nextOcc = null) {
+    hooks.status(key, `${unitName} wartet auf Stacker`);
+    yield () => st.accepting;
+    const transitTime = dur(Math.abs(unit.position.z - Z_STK));
+    const departAt = st.nextHubAt === null ? sim.t : st.nextHubAt - transitTime;
+    if (departAt > sim.t) {
+      hooks.status(key, `${unitName} wartet auf Stacker-Takt`);
+      yield departAt - sim.t;
+    }
+    st.accepting = false;
+    hooks.pulse(6); hooks.status(key, `${unitName} fährt in Stacker`);
+    source.ready = false;
+    yield* moveFromSlot(unit, source, Z_STK, nextOcc);
+    st.arrived = unit;
+  }
+
   // 6) Zuführung zum Stacker: mit Vorstapelung quer übergeben, ohne Vorstapelung direkt zugeführt.
   //    Bei Vorstapelung wechseln die Einheiten strikt zwischen den beiden Spuren eines Stackers → Regel R3 bleibt erfüllt.
   function* merger(s) {
@@ -808,14 +824,8 @@ function startProcess(m, maxH, seed) {
         if ((crate.userData.seq ?? -1) !== next) console.warn('Sequenzfehler', m.tag, s, crate.userData.seq, next);
         const unit = new THREE.Group(); unit.position.set(ln.x, CONV_Y, Z_PRE); dynamic.add(unit); unit.attach(crate);
         ln.pre.occ = unit;
-        hooks.status(key, `${uName} wartet auf Stacker`);
-        yield () => st.accepting;
-        st.accepting = false;
-        hooks.pulse(6); hooks.status(key, `${uName} fährt in Stacker`);
-        ln.pre.ready = false;
         next++;
-        yield* moveFromSlot(unit, ln.pre, Z_STK);
-        st.arrived = unit;
+        yield* sendToStacker(st, unit, ln.pre, key, uName);
       }
     }
     const top = s === 0 ? 1 : 2, bot = s === 0 ? 0 : 3;
@@ -845,14 +855,8 @@ function startProcess(m, maxH, seed) {
       }
       if ((unit.userData.seq ?? -1) !== next) console.warn('Sequenzfehler', m.tag, s, unit.userData.seq, next);
       if (!m.pre) { const g = new THREE.Group(); g.position.set(lt.x, CONV_Y, Z_PRE); dynamic.add(g); g.attach(unit); unit = g; }
-      hooks.status(key, `${uName} wartet auf Stacker`);
-      yield () => st.accepting;
-      st.accepting = false;
-      hooks.pulse(6); hooks.status(key, `${uName} fährt in Stacker`);
-      lt.pre.ready = false;
       next++;
-      yield* moveFromSlot(unit, lt.pre, Z_STK, fromBot ? null : RES); // nächste Einheit kommt von der jeweils anderen Spur
-      st.arrived = unit;
+      yield* sendToStacker(st, unit, lt.pre, key, uName, fromBot ? null : RES); // nächste Einheit kommt von der jeweils anderen Spur
     }
   }
 
@@ -861,18 +865,14 @@ function startProcess(m, maxH, seed) {
   function* stacker(s) {
     const st = stackers[s], plat = P.stackLift[s], key = `Stacker ${side(s)}`;
     const uName = m.pre ? 'Paar' : 'Behälter';
-    let tower = null, topLevel = Infinity, nextCycleAt = null;
+    let tower = null, topLevel = Infinity;
     for (;;) {
       const n = tower ? tower.children.reduce((k, c) => k + c.userData.n, 0) : 0;
       hooks.status(key, n ? `Turm (${n}) abgesenkt – wartet auf ${uName}` : `Plattform oben – wartet auf ${uName}`);
       yield () => st.arrived !== null;
       const u = st.arrived; st.arrived = null;
       const unitN = u.children.reduce((k, c) => k + c.userData.n, 0);
-      if (nextCycleAt !== null && nextCycleAt > sim.t) {
-        hooks.status(key, 'Zykluszeit nach Angebot – wartet vor nächstem Hub');
-        yield nextCycleAt - sim.t;
-      }
-      nextCycleAt = sim.t + unitN * 3600 / (OFFER_SYSTEM_RATE[m.pre ? 'pre' : 'single'] / 2);
+      st.nextHubAt = sim.t + unitN * 3600 / (OFFER_SYSTEM_RATE[m.pre ? 'pre' : 'single'] / 2);
       hooks.pulse(7); hooks.count('Stackerhübe');
       if (!tower) { tower = new THREE.Group(); tower.position.set(st.x, plat.position.y, Z_STK); dynamic.add(tower); topLevel = Infinity; }
       const cs = [...u.children].sort((a, b) => a.position.y - b.position.y);
@@ -900,9 +900,12 @@ function startProcess(m, maxH, seed) {
         const t = fin(Math.max(1, (plat.position.y - Y_PAL) / 0.5));
         sim.move(tower, { y: Y_PAL }, t);
         yield sim.move(plat, { y: Y_PAL }, t);
-        hooks.status(key, 'Turm fertig – wartet auf freien Palettierer-Puffer');
         const pl = palLanes[s];
-        yield () => !pal.pushing && pl.reserved < 2;
+        const hasRoom = () => !pal.pushing && pl.reserved < Z_SLOTS.length;
+        if (!hasRoom()) {
+          hooks.status(key, `Turm fertig – wartet auf Palettierer-Puffer (${pl.reserved}/${Z_SLOTS.length}${pal.pushing ? ', Schieber aktiv' : ''})`);
+          yield hasRoom;
+        }
         const idx = pl.reserved++;
         hooks.pulse(8); hooks.status(key, 'Turm fährt in Palettierer');
         const tw = tower; tower = null;
@@ -941,7 +944,7 @@ function startProcess(m, maxH, seed) {
     const pu = P.palPusher, key = 'Palettierer';
     for (;;) {
       hooks.status(key, 'sammelt Türme');
-      yield () => palLanes[0].towers.length === 2 && palLanes[1].towers.length === 2 && palStation.ready;
+      yield () => palLanes[0].towers.length === Z_SLOTS.length && palLanes[1].towers.length === Z_SLOTS.length && palStation.ready;
       pal.pushing = true; hooks.pulse(9);
       const left = palLanes[0].towers, right = palLanes[1].towers;
       hooks.status(key, 'Türme links → rechts zusammenschieben');
@@ -955,14 +958,15 @@ function startProcess(m, maxH, seed) {
       yield sim.move(pu, { x: LANE_X[2] - CRATE_W - off + shift }, fin(3.2));
       const p = palStation.pallet;
       for (const t of [...left, ...right]) p.attach(t);
-      palLanes.forEach((l) => { l.towers = []; l.reserved = 0; });
-      pal.pushing = false;
       palletNo++;
       const n = [...left, ...right].reduce((k, t) => k + t.children.reduce((j, c) => j + c.userData.n, 0), 0);
       hooks.log(`Palette ${palletNo} beladen (${n} Behälter)`);
       hooks.count('Behälter palettiert', n);
-      sim.move(pu, { x: pu.userData.park }, fin(2.6));
       hooks.status(key, 'Schieber fährt zurück');
+      yield sim.move(pu, { x: pu.userData.park }, fin(2.6));
+      palLanes.forEach((l) => { l.towers = []; l.reserved = 0; });
+      pal.pushing = false;
+      hooks.status(key, 'sammelt Türme');
       hooks.status('Palettenplatz', 'Vollpalette fährt ab');
       palStation.ready = false;
       yield sim.move(p, { z: Z_PAL - 1.45 }, fin(dur(1.45)), linear);
