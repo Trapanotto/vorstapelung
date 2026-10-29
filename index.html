@@ -153,7 +153,7 @@ const CONTENT_IDS = ['apple', 'tomato', 'banana', 'vegetable'];
 const OFFER_SYSTEM_RATE = { pre: 2441, single: 1327 }; // Behälter/h für 2 Stacker + 1 Palettierer, Angebot Kap. 7.3 bei 85%
 const IN_F = 0.5;              // Zuführung, Turmwechsel und Palettierer schneller → Engpass ist bei beiden Maschinen der Stackerhub
 const fin = (d) => d * IN_F;
-let TAKT = 1.62;               // Gemeinsamer Bewegungsfaktor, auf die Angebotsleistung bei 85 % abgestimmt
+let TAKT = 1;                  // Keine zusätzliche Verlangsamung gegenüber der Angebots-Zykluszeit
 const PALLET_H = 0.144;
 const LANE_X = [-1.9, -0.85, 0.85, 1.9];
 const LANE_IDS = { pre: [0, 1, 2, 3], single: [1, 2] };
